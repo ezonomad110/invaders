@@ -27,6 +27,12 @@
   #bigBtn:active{transform:scale(.97)}
   #subBtn{margin-top:12px;background:transparent;border:none;color:#94a3b8;font-size:12px;text-decoration:underline}
   #foot{padding:6px 10px calc(8px + env(safe-area-inset-bottom));text-align:center;font-size:11px;color:#64748b;letter-spacing:.05em}
+  /* Retro-Tennis-style touch controls: stick (left thumb) + swing button (right thumb), overlaid on the field */
+  #touch{position:absolute;left:0;right:0;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end;padding:0 16px;z-index:4;pointer-events:none}
+  #stick{pointer-events:auto;width:98px;height:98px;border-radius:50%;border:2px solid rgba(34,211,238,.55);background:radial-gradient(circle,rgba(34,211,238,.10),rgba(34,211,238,.03) 70%);position:relative;touch-action:none}
+  #stickKnob{width:44px;height:44px;border-radius:50%;background:rgba(56,189,248,.35);border:2px solid #7dd3fc;box-shadow:0 0 14px rgba(56,189,248,.7);position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+  #btnSwing{pointer-events:auto;width:98px;height:98px;border-radius:50%;border:2px solid #38bdf8;background:rgba(8,47,73,.82);color:#fff;font-size:16px;font-weight:700;line-height:1.25;box-shadow:0 0 18px rgba(56,189,248,.55),inset 0 0 14px rgba(56,189,248,.30);touch-action:none}
+  #btnSwing:active{transform:scale(.94);background:rgba(12,74,110,.9)}
 </style>
 </head>
 <body>
@@ -42,14 +48,18 @@
     <canvas id="cv"></canvas>
     <div id="overlay">
       <h1>SABER<br>BREAKER<br><span class="pink" style="font-size:17px">― ルミナス・インベーダー崩し ―</span></h1>
-      <p><b>左右ドラッグ</b>で移動、<b>上にスワイプ</b>でライトセイバーを振る！<br>
+      <p><b>左スティック</b>で移動、<b>右ボタン</b>でライトセイバーを振る！（レトロテニスと同じ操作）<br>
       敵の弾は壁で反射しながら飛んでくる。跳ね返すたびにその弾の<b>チェーン</b>が貯まって強くなり、<b>1段階ごとに敵を1体貫通</b>するようになる。編隊に混ざった<b>中ボス・大ボス</b>も壊せるようになる。<br>
       後ろに抜けた弾はセーフ、<b>体に当たるとダメージ</b>。編隊が最前線まで来たら終わりだ。</p>
       <button id="bigBtn">▶ ゲームスタート</button>
       <button id="subBtn">音 ON / OFF</button>
     </div>
+    <div id="touch">
+      <div id="stick"><div id="stickKnob"></div></div>
+      <button id="btnSwing">⚔<br>振る</button>
+    </div>
   </div>
-  <div id="foot">左右ドラッグで移動 ・ 上スワイプで振る ・ ⏸で一時停止</div>
+  <div id="foot">左スティックで移動 ・ 右ボタンで振る ・ ⏸で一時停止</div>
 </div>
 <script>
 "use strict";
@@ -247,10 +257,17 @@ function update(dt){
   pops = pops.filter(p => (p.t += dt) < 0.9);
   if (state !== 'playing') return;
 
-  // player: left/right only, delta-time
+  // player: left/right only, delta-time. Stick = analog velocity (Retro Tennis style).
   player.prevX = player.x;
-  const dx = player.targetX - player.x;
-  player.x += clamp(dx, -1.9 * dt, 1.9 * dt);
+  let mv = 0;
+  if (typeof stick !== 'undefined' && stick.active) mv = stick.x * 1.8;
+  if (typeof keys !== 'undefined' && (keys['ArrowLeft'] || keys['a'])) mv = -1.8;
+  if (typeof keys !== 'undefined' && (keys['ArrowRight'] || keys['d'])) mv = 1.8;
+  if (mv !== 0){ player.x += mv * dt; player.targetX = player.x; }
+  else {
+    const dx = player.targetX - player.x;
+    player.x += clamp(dx, -1.9 * dt, 1.9 * dt);
+  }
   player.x = clamp(player.x, -0.88, 0.88);
   player.speed = dt > 0 ? (player.x - player.prevX) / dt : 0;
   if (player.swingT > 0) player.swingT -= dt;
@@ -573,52 +590,39 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 
-// ---------- input: drag = move (x only), swipe up = swing ----------
-// A gesture is classified by its first decisive motion:
-//  - mostly horizontal -> MOVE mode: the character follows the finger's x.
-//  - mostly upward     -> SWING mode: swing on the spot. The character does NOT
-//    move for this gesture at all, no matter where on the screen it happened.
-function toFieldX(clientX){
-  const r = cv.getBoundingClientRect();
-  return clamp(screenToFieldX((clientX - r.left - OX) / SCALE), -0.95, 0.95);
-}
+// ---------- input: Retro-Tennis style ----------
+// Left thumb: virtual analog stick (move). Right thumb: SWING button.
+// Two independent pointers, so moving and swinging work at the same time.
+// (The old one-finger drag / swipe-up controls were dropped: poor operability.)
 function doSwing(){
   if (state !== 'playing' || player.swingCd > 0) return;
   player.swingT = 0.24; player.swingCd = 0.30;
   swingSound();
 }
-let ptr = null; // {id, startX, startY, startT, mode:null|'move'|'swing', prevTargetX}
-cv.addEventListener('pointerdown', e => {
-  e.preventDefault();
-  ptr = { id: e.pointerId, startX: e.clientX, startY: e.clientY, startT: performance.now(), mode: null, prevTargetX: player.targetX };
-}, { passive: false });
-cv.addEventListener('pointermove', e => {
-  if (!ptr || e.pointerId !== ptr.id) return;
-  e.preventDefault();
-  const dx = e.clientX - ptr.startX, dy = e.clientY - ptr.startY;
-  if (ptr.mode === null){
-    if (dy < -24 && Math.abs(dy) > Math.abs(dx) * 0.85){
-      ptr.mode = 'swing';
-      player.targetX = ptr.prevTargetX; // stay exactly where you were
-      doSwing();
-    } else if (Math.abs(dx) > 14 && Math.abs(dx) >= Math.abs(dy) * 1.1){
-      ptr.mode = 'move';
-    }
+const stick = { x: 0, active: false, id: null };
+(function initStick(){
+  const base = document.getElementById('stick'), knob = document.getElementById('stickKnob');
+  if (!base || !knob) return;
+  const R = 34;
+  const setKnob = (dx, dy) => { knob.style.transform = "translate(calc(-50% + " + dx + "px), calc(-50% + " + dy + "px))"; };
+  function handle(e){
+    const r = base.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const d = Math.hypot(dx, dy);
+    if (d > R){ dx = dx / d * R; dy = dy / d * R; }
+    stick.x = dx / R; stick.active = true; setKnob(dx, dy);
   }
-  if (ptr.mode === 'move') player.targetX = toFieldX(e.clientX);
-  // 'swing' mode: ignore all further motion in this gesture
-}, { passive: false });
-function endPtr(e){
-  if (!ptr || e.pointerId !== ptr.id) return;
-  const dt = (performance.now() - ptr.startT) / 1000, dy = e.clientY - ptr.startY, dx = e.clientX - ptr.startX;
-  // a very quick flick can end before the move handler classifies it
-  if (ptr.mode === null && dt < 0.38 && dy < -44 && Math.abs(dy) > Math.abs(dx) * 1.0){
-    player.targetX = ptr.prevTargetX; doSwing();
-  }
-  ptr = null;
-}
-cv.addEventListener('pointerup', endPtr);
-cv.addEventListener('pointercancel', () => ptr = null);
+  function end(){ stick.x = 0; stick.active = false; stick.id = null; setKnob(0, 0); }
+  base.addEventListener('pointerdown', e => { e.preventDefault(); stick.id = e.pointerId; try { base.setPointerCapture(e.pointerId); } catch (err) {} handle(e); });
+  base.addEventListener('pointermove', e => { if (stick.id === e.pointerId) handle(e); });
+  ['pointerup', 'pointercancel'].forEach(t => base.addEventListener(t, e => { if (stick.id === e.pointerId) end(); }));
+})();
+(function bindSwing(){
+  const el = document.getElementById('btnSwing'); if (!el) return;
+  el.addEventListener('pointerdown', e => { e.preventDefault(); doSwing(); });
+  el.addEventListener('touchstart', e => { e.preventDefault(); doSwing(); }, { passive: false });
+})();
+document.addEventListener('touchmove', e => { if (e.target === cv) e.preventDefault(); }, { passive: false });
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.key] = true;
@@ -630,7 +634,7 @@ setInterval(() => { if (state !== 'playing') return;
   if (keys['ArrowLeft'] || keys['a']) player.targetX = clamp(player.targetX - 0.06, -0.95, 0.95);
   if (keys['ArrowRight'] || keys['d']) player.targetX = clamp(player.targetX + 0.06, -0.95, 0.95);
 }, 16);
-document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
 document.addEventListener('contextmenu', e => e.preventDefault());
 
 function togglePause(){
