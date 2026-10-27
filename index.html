@@ -43,7 +43,7 @@
     <div id="overlay">
       <h1>SABER<br>BREAKER<br><span class="pink" style="font-size:17px">― ルミナス・インベーダー崩し ―</span></h1>
       <p><b>左右ドラッグ</b>で移動、<b>上にスワイプ</b>でライトセイバーを振る！<br>
-      敵の弾は壁で反射しながら飛んでくる。跳ね返すたびにその弾の<b>チェーン</b>が貯まって強くなり、編隊に混ざった<b>中ボス・大ボス</b>も壊せるようになる。<br>
+      敵の弾は壁で反射しながら飛んでくる。跳ね返すたびにその弾の<b>チェーン</b>が貯まって強くなり、<b>1段階ごとに敵を1体貫通</b>するようになる。編隊に混ざった<b>中ボス・大ボス</b>も壊せるようになる。<br>
       後ろに抜けた弾はセーフ、<b>体に当たるとダメージ</b>。編隊が最前線まで来たら終わりだ。</p>
       <button id="bigBtn">▶ ゲームスタート</button>
       <button id="subBtn">音 ON / OFF</button>
@@ -213,7 +213,7 @@ function spawnEnemyBall(){
   const p = unitPos(src);
   const S = ballSpeed();
   const ang = rand(0.35, 0.75) * (Math.random() < 0.5 ? -1 : 1); // diagonal so it pinballs off the walls
-  balls.push({ x: p.x, z: p.z + 0.04, vx: Math.sin(ang) * S, vz: Math.cos(ang) * S, chain: 0, returned: false, resolved: false, trail: [] });
+  balls.push({ x: p.x, z: p.z + 0.04, vx: Math.sin(ang) * S, vz: Math.cos(ang) * S, chain: 0, pierce: 0, hitSet: new Set(), returned: false, resolved: false, trail: [] });
   beep(880, 0.07, 'square', 0.02, -420);
 }
 function maxBalls(){ return Math.min(2 + Math.floor((wave - 1) / 2), 4); }
@@ -285,18 +285,20 @@ function update(dt){
     if (b.x < -WALL_X + 0.03){ b.x = -WALL_X + 0.03; b.vx = Math.abs(b.vx); burstAt(b.x, b.z, '#67e8f9', 4, 0.6); beep(300, 0.04, 'square', 0.025); }
     if (b.x > WALL_X - 0.03){ b.x = WALL_X - 0.03; b.vx = -Math.abs(b.vx); burstAt(b.x, b.z, '#67e8f9', 4, 0.6); beep(300, 0.04, 'square', 0.025); }
     // far wall: a returned ball that misses everyone bounces back
-    if (b.z < 0.015 && b.vz < 0){ b.z = 0.015; b.vz = Math.abs(b.vz); ringAt(b.x, b.z, '#f472b6'); beep(340, 0.05, 'square', 0.03); }
+    if (b.z < 0.015 && b.vz < 0){ b.z = 0.015; b.vz = Math.abs(b.vz); if (b.hitSet) b.hitSet.clear(); ringAt(b.x, b.z, '#f472b6'); beep(340, 0.05, 'square', 0.03); }
 
     // invader collision (only matters while travelling, either direction)
     for (const u of aliveUnits()){
       if (!u.alive) continue;
       const p = unitPos(u);
       if (Math.abs(b.x - p.x) < p.wF / 2 + 0.03 && Math.abs(b.z - p.z) < p.dF / 2 + 0.026){
+        if (b.hitSet && b.hitSet.has(u)) continue;
         const dmg = b.returned ? ballPower(b.chain) : 1;
         if (!b.returned){
           // an enemy ball touching its own side does nothing (it was just fired)
           continue;
         }
+        if (b.hitSet) b.hitSet.add(u);
         u.hp -= dmg; u.flashT = 0.14;
         burstAt(p.x, p.z, ROW_COL[u.row] || '#f472b6', u.kind === 'normal' ? 14 : 22, 1.1);
         ringAt(p.x, p.z, chainColor(b.chain));
@@ -309,10 +311,19 @@ function update(dt){
           beep(520, 0.07, 'square', 0.045, -160);
           if (u.kind !== 'normal') pop('HIT! 残り ' + u.hp, '#facc15', false);
         }
-        // rally rule: after hitting one, the ball comes back to the player
-        b.vz = Math.abs(S) * 0.88; b.vx = clamp(b.vx + (b.x - p.x) * 1.4, -S * 0.8, S * 0.8);
-        const ns = Math.hypot(b.vx, b.vz); b.vx *= S / ns; b.vz *= S / ns;
-        b.z = p.z + p.dF / 2 + 0.03;
+        // pierce: while the ball still has pierce left (1 per chain stage),
+        // it punches straight through a normal invader and keeps flying.
+        // Bosses are solid: they always stop the ball.
+        if (u.kind === 'normal' && b.pierce > 0){
+          b.pierce--;
+          burstAt(b.x, b.z, '#ffffff', 6, 0.8);
+        } else {
+          // rally rule: after hitting one, the ball comes back to the player
+          b.vz = Math.abs(S) * 0.88; b.vx = clamp(b.vx + (b.x - p.x) * 1.4, -S * 0.8, S * 0.8);
+          const ns = Math.hypot(b.vx, b.vz); b.vx *= S / ns; b.vz *= S / ns;
+          b.z = p.z + p.dF / 2 + 0.03;
+          if (b.hitSet) b.hitSet.clear();
+        }
         break;
       }
     }
@@ -324,7 +335,7 @@ function update(dt){
       const dxp = b.x - player.x;
       if (player.swingT > 0 && Math.abs(dxp) < 0.30){
         // RETURN! chain grows for this ball
-        b.chain++; b.returned = true;
+        b.chain++; b.returned = true; b.pierce = b.chain; if (b.hitSet) b.hitSet.clear();
         if (b.chain > maxChain){ maxChain = b.chain; updateHud(); }
         const S2 = ballSpeed() + b.chain * 0.022;
         const rel = clamp(dxp / 0.30, -1, 1);
@@ -423,44 +434,55 @@ function drawInvader(u){
 }
 function drawCharacter(){
   const pr = proj(player.x, PLAYER_Z);
-  const x = pr.x, y = pr.y, u = 5.4; // pixel unit (near scale)
+  const x = pr.x, y = pr.y;
   // aura + foot ring (cyan, your side - same as Luminous tennis)
-  const ag = ctx.createRadialGradient(x, y - 18, 0, x, y - 18, 52);
+  const ag = ctx.createRadialGradient(x, y - 16, 0, x, y - 16, 52);
   ag.addColorStop(0, 'rgba(34,211,238,0.20)'); ag.addColorStop(1, 'rgba(34,211,238,0)');
-  ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y - 18, 52, 0, 6.283); ctx.fill();
+  ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(x, y - 16, 52, 0, 6.283); ctx.fill();
   ctx.save(); ctx.strokeStyle = '#22d3ee'; ctx.shadowColor = '#22d3ee'; ctx.shadowBlur = 9; ctx.lineWidth = 1.8;
-  ctx.beginPath(); ctx.ellipse(x, y + 15, 24, 7.5, 0, 0, 6.283); ctx.stroke(); ctx.restore();
+  ctx.beginPath(); ctx.ellipse(x, y + 15, 25, 7.5, 0, 0, 6.283); ctx.stroke(); ctx.restore();
   if (player.hurtT > 0 && Math.floor(time * 14) % 2 === 0) ctx.globalAlpha = 0.35;
-  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, y + 15, 20, 6.5, 0, 0, 6.283); ctx.fill();
-  // legs (run cycle)
-  const moving = Math.abs(player.speed) > 0.25, run = moving ? Math.floor(time * 10) % 2 : -1;
-  [[-4, 0], [2, 1]].forEach(([off, side]) => {
-    const len = (run === -1 ? 3 : (side === 0) === (run === 0) ? 3.2 : 1.8) * u * 0.88;
-    ctx.fillStyle = '#e7d8bd'; ctx.fillRect(x + off * u * 0.88, y, 2 * u * 0.88, len);
-    ctx.fillStyle = '#f8fafc'; ctx.fillRect(x + off * u * 0.88, y + len, 2 * u * 0.88, 0.8 * u * 0.88);
-    ctx.fillStyle = '#1f2937'; ctx.fillRect(x + (off - 0.3) * u * 0.88, y + len + 0.8 * u * 0.88, 2.6 * u * 0.88, 1.2 * u * 0.88);
-  });
-  // body sprite: back view, Jedi-like hood + robe colours
-  const HEAD_BACK = ["....CCCCCC....","..CCCCCCCCCC..","..CCCCCCCCCC..","..CCCCCCCCCC..","..CCCCCCCCCC..","...SSSSSSSS..."];
-  const BODY = [".ATTTTTTTTTTA.",".ATTTTTTTTTTA.","..TTTTTTTTTT..","..TTTTTTTTTT..","..WWWWWWWWWW..","..BBBBBBBBBB.."];
-  const pal = { C: '#57534e', S: '#ffd9b3', T: '#d6c7a8', A: '#ffd9b3', W: '#a89a7d', B: '#44403c' };
-  const top = y - 12 * u * 0.88;
-  HEAD_BACK.concat(BODY).forEach((row, ri) => { for (let ci = 0; ci < row.length; ci++){
-    const ch = row[ci]; if (ch === '.') continue; ctx.fillStyle = pal[ch];
-    ctx.fillRect(x - 7 * u * 0.88 + ci * u * 0.88, top + ri * u * 0.88, u * 0.88 + 0.5, u * 0.88 + 0.5);
-  }});
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, y + 15, 21, 6.5, 0, 0, 6.283); ctx.fill();
+  // ===== Yoda, back view: big pointed ears, green head, beige robe =====
+  const GREEN = '#7ac74f', GREEN_D = '#5da33c', SKIN_HAIR = '#e8e6da', ROBE = '#d6c7a8', ROBE_D = '#a89a7d', BELT = '#6b4f2e';
+  const headY = y - 30, bob = Math.abs(player.speed) > 0.25 ? Math.sin(time * 12) * 1.1 : 0;
+  // robe: wide A-line trapezoid (short body, mostly robe)
+  ctx.fillStyle = ROBE;
+  ctx.beginPath();
+  ctx.moveTo(x - 10, headY + 12 + bob); ctx.lineTo(x + 10, headY + 12 + bob);
+  ctx.lineTo(x + 18, y + 13); ctx.lineTo(x - 18, y + 13); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = ROBE_D; // robe shading + centre seam
+  ctx.fillRect(x - 1.2, headY + 13 + bob, 2.4, y + 12 - (headY + 13 + bob));
+  ctx.beginPath(); ctx.moveTo(x + 5, headY + 12 + bob); ctx.lineTo(x + 18, y + 13); ctx.lineTo(x + 11, y + 13); ctx.lineTo(x + 2, headY + 13 + bob); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = BELT; ctx.fillRect(x - 11.5, headY + 24 + bob, 23, 3.6); // belt
+  // little feet under the robe hem
+  ctx.fillStyle = GREEN_D;
+  const shuffle = Math.abs(player.speed) > 0.25 ? (Math.floor(time * 10) % 2 === 0 ? 2 : -2) : 0;
+  ctx.fillRect(x - 11 + shuffle, y + 12, 8, 3.4); ctx.fillRect(x + 3 - shuffle, y + 12, 8, 3.4);
+  // ears: long pointed triangles sticking out sideways (drawn behind the head)
+  ctx.fillStyle = GREEN;
+  ctx.beginPath(); ctx.moveTo(x - 8, headY + 1 + bob); ctx.lineTo(x - 31, headY - 4 + bob); ctx.lineTo(x - 30, headY + 3 + bob); ctx.lineTo(x - 9, headY + 8 + bob); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x + 8, headY + 1 + bob); ctx.lineTo(x + 31, headY - 4 + bob); ctx.lineTo(x + 30, headY + 3 + bob); ctx.lineTo(x + 9, headY + 8 + bob); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = GREEN_D; // ear underside shade
+  ctx.beginPath(); ctx.moveTo(x - 9, headY + 6 + bob); ctx.lineTo(x - 29, headY + 2 + bob); ctx.lineTo(x - 28, headY + 4.5 + bob); ctx.lineTo(x - 9, headY + 8 + bob); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x + 9, headY + 6 + bob); ctx.lineTo(x + 29, headY + 2 + bob); ctx.lineTo(x + 28, headY + 4.5 + bob); ctx.lineTo(x + 9, headY + 8 + bob); ctx.closePath(); ctx.fill();
+  // head: green dome seen from behind, with wispy white hair at the back/sides
+  ctx.save(); ctx.shadowColor = GREEN; ctx.shadowBlur = 6;
+  ctx.fillStyle = GREEN; ctx.beginPath(); ctx.arc(x, headY + bob, 11.5, 0, 6.283); ctx.fill(); ctx.restore();
+  ctx.fillStyle = GREEN_D; ctx.beginPath(); ctx.arc(x, headY + 3 + bob, 10.6, 0.25, Math.PI - 0.25); ctx.fill();
+  ctx.fillStyle = SKIN_HAIR; // white hair wisps around the lower back of the head
+  [[-9, 6], [-6, 9], [-2, 10.4], [2, 10.4], [6, 9], [9, 6]].forEach(([ox, oy]) => ctx.fillRect(x + ox - 1.4, headY + oy + bob, 2.8, 2.2));
   ctx.globalAlpha = 1;
-  // ---- lightsaber arm + saber (same construction as Luminous tennis) ----
-  // idle: saber up/out. Swing (0.24s): sweeps through, leaving fan afterimages.
+  // ---- lightsaber arm + saber (same construction as Luminous tennis, longer blade) ----
   let th = -0.9;
   if (player.swingT > 0){ const q = 1 - player.swingT / 0.24; th = -2.35 + 2.9 * q; }
-  const sx = x + 5.2 * 2, sy = y - 4.5 * 2 - 14, hx = sx + Math.cos(th) * 3.2 * 2, hy = sy + Math.sin(th) * 3.2 * 2;
-  ctx.strokeStyle = '#ffd9b3'; ctx.lineWidth = 4.4; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(sx - 8, sy + 2); ctx.lineTo(hx, hy); ctx.stroke();
+  const sx = x + 10, sy = headY + 16 + bob, hx = sx + Math.cos(th) * 6.4, hy = sy + Math.sin(th) * 6.4;
+  ctx.strokeStyle = GREEN; ctx.lineWidth = 4.2; ctx.lineCap = 'round'; // green arm to the hilt
+  ctx.beginPath(); ctx.moveTo(x + 5, headY + 18 + bob); ctx.lineTo(hx, hy); ctx.stroke();
   const saber = '#38bdf8', saberPale = '#bae6fd';
   const dxv = Math.cos(th), dyv = Math.sin(th);
-  const bx = hx + dxv * 1.2 * 2, by = hy + dyv * 1.2 * 2;
-  const txp = hx + dxv * 11.5 * 2, typ = hy + dyv * 11.5 * 2;
+  const bx = hx + dxv * 2.4, by = hy + dyv * 2.4;
+  const txp = hx + dxv * 16.5 * 2, typ = hy + dyv * 16.5 * 2;
   if (player.swingT > 0) player.saberTrail.push({ bx, by, tx: txp, ty: typ, t: 0 });
   ctx.save(); ctx.lineCap = 'round';
   player.saberTrail.forEach(sp => {
@@ -552,6 +574,10 @@ function loop(now){
 }
 
 // ---------- input: drag = move (x only), swipe up = swing ----------
+// A gesture is classified by its first decisive motion:
+//  - mostly horizontal -> MOVE mode: the character follows the finger's x.
+//  - mostly upward     -> SWING mode: swing on the spot. The character does NOT
+//    move for this gesture at all, no matter where on the screen it happened.
 function toFieldX(clientX){
   const r = cv.getBoundingClientRect();
   return clamp(screenToFieldX((clientX - r.left - OX) / SCALE), -0.95, 0.95);
@@ -561,32 +587,34 @@ function doSwing(){
   player.swingT = 0.24; player.swingCd = 0.30;
   swingSound();
 }
-let ptr = null; // {id, startX, startY, startT, samples:[{x,y,t}], swiped}
+let ptr = null; // {id, startX, startY, startT, mode:null|'move'|'swing', prevTargetX}
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
-  ptr = { id: e.pointerId, startX: e.clientX, startY: e.clientY, startT: performance.now(), samples: [{ x: e.clientX, y: e.clientY, t: performance.now() }], swiped: false };
-  player.targetX = toFieldX(e.clientX);
+  ptr = { id: e.pointerId, startX: e.clientX, startY: e.clientY, startT: performance.now(), mode: null, prevTargetX: player.targetX };
 }, { passive: false });
 cv.addEventListener('pointermove', e => {
   if (!ptr || e.pointerId !== ptr.id) return;
   e.preventDefault();
-  player.targetX = toFieldX(e.clientX);
-  const now = performance.now();
-  ptr.samples.push({ x: e.clientX, y: e.clientY, t: now });
-  ptr.samples = ptr.samples.filter(s => now - s.t < 130);
-  // swipe up detection: fast upward motion inside the recent window
-  if (!ptr.swiped && ptr.samples.length >= 2){
-    const s0 = ptr.samples[0], s1 = ptr.samples[ptr.samples.length - 1];
-    const dt = (s1.t - s0.t) / 1000, dy = s1.y - s0.y;
-    if (dt > 0.02 && dy < -34 && dy / dt < -620){
-      ptr.swiped = true; doSwing();
+  const dx = e.clientX - ptr.startX, dy = e.clientY - ptr.startY;
+  if (ptr.mode === null){
+    if (dy < -24 && Math.abs(dy) > Math.abs(dx) * 0.85){
+      ptr.mode = 'swing';
+      player.targetX = ptr.prevTargetX; // stay exactly where you were
+      doSwing();
+    } else if (Math.abs(dx) > 14 && Math.abs(dx) >= Math.abs(dy) * 1.1){
+      ptr.mode = 'move';
     }
   }
+  if (ptr.mode === 'move') player.targetX = toFieldX(e.clientX);
+  // 'swing' mode: ignore all further motion in this gesture
 }, { passive: false });
 function endPtr(e){
   if (!ptr || e.pointerId !== ptr.id) return;
   const dt = (performance.now() - ptr.startT) / 1000, dy = e.clientY - ptr.startY, dx = e.clientX - ptr.startX;
-  if (!ptr.swiped && dt < 0.38 && dy < -52 && Math.abs(dy) > Math.abs(dx) * 1.15) doSwing(); // quick flick released fast
+  // a very quick flick can end before the move handler classifies it
+  if (ptr.mode === null && dt < 0.38 && dy < -44 && Math.abs(dy) > Math.abs(dx) * 1.0){
+    player.targetX = ptr.prevTargetX; doSwing();
+  }
   ptr = null;
 }
 cv.addEventListener('pointerup', endPtr);
