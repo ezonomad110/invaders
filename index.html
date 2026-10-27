@@ -1,1 +1,517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>SABER BREAKER - ルミナス・インベーダー崩し</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:#05010f;overflow:hidden}
+  body{font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans",sans-serif;color:#e0f2fe;
+    display:flex;flex-direction:column;align-items:center;height:100dvh;
+    user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+  #wrap{position:relative;width:min(100vw,480px);flex:1;display:flex;flex-direction:column;min-height:0}
+  #hud{display:flex;justify-content:space-between;align-items:center;padding:8px 10px 4px;font-size:13px;letter-spacing:.06em}
+  #hud b{color:#fff;text-shadow:0 0 8px #22d3ee}
+  .hud-label{font-size:10px;color:#a5b4fc;display:block;letter-spacing:.15em}
+  #hud button{background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.5);color:#bae6fd;
+    border-radius:999px;padding:5px 12px;font-size:12px}
+  #game{position:relative;flex:1;min-height:0}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:24px;background:rgba(5,1,15,.72);backdrop-filter:blur(2px);z-index:5}
+  #overlay.hidden{display:none}
+  #overlay h1{font-size:30px;line-height:1.15;color:#fff;letter-spacing:.08em;
+    text-shadow:0 0 6px #38bdf8,0 0 22px #38bdf8,0 0 44px #2563eb}
+  #overlay h1 .pink{color:#ffe4f1;text-shadow:0 0 6px #f472b6,0 0 22px #f472b6,0 0 44px #db2777}
+  #overlay p{margin-top:14px;font-size:13.5px;line-height:1.9;color:#cbd5e1;max-width:340px}
+  #overlay p b{color:#7dd3fc}
+  #bigBtn{margin-top:22px;background:#082f49;border:2px solid #38bdf8;color:#fff;font-size:17px;font-weight:700;
+    letter-spacing:.12em;padding:13px 34px;border-radius:999px;box-shadow:0 0 18px rgba(56,189,248,.65),inset 0 0 12px rgba(56,189,248,.35)}
+  #bigBtn:active{transform:scale(.97)}
+  #subBtn{margin-top:12px;background:transparent;border:none;color:#94a3b8;font-size:12px;text-decoration:underline}
+  #foot{padding:6px 10px calc(8px + env(safe-area-inset-bottom));text-align:center;font-size:11px;color:#64748b;letter-spacing:.05em}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div><span class="hud-label">SCORE</span><b id="score">0</b></div>
+    <div style="text-align:center"><span class="hud-label">WAVE</span><b id="wave">1</b></div>
+    <div style="text-align:center"><span class="hud-label">HI-SCORE</span><b id="hiscore">0</b></div>
+    <div style="text-align:right"><span class="hud-label">LIFE</span><b id="lives">♥♥♥</b></div>
+    <button id="pauseBtn">⏸</button>
+  </div>
+  <div id="game">
+    <canvas id="cv"></canvas>
+    <div id="overlay">
+      <h1>SABER<br>BREAKER<br><span class="pink" style="font-size:17px">― ルミナス・インベーダー崩し ―</span></h1>
+      <p>ルミナスの<b>ライトセイバー持ちキャラ</b>がブロック崩し！<br>
+      指でドラッグして移動、<b>青いセイバーの刃</b>でボールを跳ね返し、降りてくるインベーダーを全滅させよう。<br>
+      敵の赤い弾は<b>刃で防げる</b>けど、<b>体に当たるとダメージ</b>。ボールを落としてもダメージだよ。</p>
+      <button id="bigBtn">▶ ゲームスタート</button>
+      <button id="subBtn">音 ON / OFF</button>
+    </div>
+  </div>
+  <div id="foot">ドラッグ / ←→キーで移動 ・ タップでボール発射 ・ ⏸で一時停止</div>
+</div>
+<script>
+"use strict";
+// ===== SABER BREAKER v1 =====
+// Luminous (Retro Tennis) lightsaber character plays Breakout vs Invaders.
+// All motion is delta-time based (seconds) so speed is identical at 60Hz / 120Hz.
+const W = 420, H = 640;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let DPR = 1, CW = 0, CH = 0, SCALE = 1, OX = 0, OY = 0;
+function resize(){
+  const r = document.getElementById('game').getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  cv.width = Math.round(r.width*DPR); cv.height = Math.round(r.height*DPR);
+  CW = r.width; CH = r.height;
+  SCALE = Math.min(CW/W, CH/H); OX = (CW-W*SCALE)/2; OY = (CH-H*SCALE)/2;
+}
+window.addEventListener('resize', resize);
 
+// ---------- audio (WebAudio beeps) ----------
+let AC=null, muted=false;
+function beep(f,d=0.07,type='square',v=0.05,slide=0){
+  if(muted) return;
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    if(AC.state==='suspended') AC.resume();
+    const o=AC.createOscillator(), g=AC.createGain(), t=AC.currentTime;
+    o.type=type; o.frequency.setValueAtTime(f,t);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),t+d);
+    g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+d);
+  }catch(e){}
+}
+
+// ---------- helpers ----------
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function hexA(hex,a){const n=parseInt(hex.slice(1),16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+const rand=(a,b)=>a+Math.random()*(b-a);
+
+// ---------- stars / skyline ----------
+const stars=[]; for(let i=0;i<90;i++) stars.push({x:Math.random()*W,y:Math.random()*H*0.85,s:Math.random()*1.6+0.4,tw:Math.random()*6.28});
+const skyline=[]; { let x=0; while(x<W){ const bw=rand(22,46), bh=rand(28,86); const wins=[];
+  for(let wy=6;wy<bh-6;wy+=9) for(let wx=4;wx<bw-4;wx+=8) if(Math.random()<0.45) wins.push([wx,wy,Math.random()<0.3?'#f0abfc':'#67e8f9']);
+  skyline.push({x,w:bw,h:bh,wins}); x+=bw+3; } }
+
+// ---------- game state ----------
+let state='title'; // title | playing | paused | over | waveclear
+let score=0, hiScore=+(localStorage.getItem('saberBreakerHi')||0), lives=3, wave=1;
+let time=0, waveClearT=0, shake=0;
+let particles=[], rings=[], flashes=[], items=[], bolts=[], balls=[];
+const SABER_COL='#38bdf8', SABER_PALE='#bae6fd';
+
+// player = Luminous chibi character holding the saber horizontally
+const player={ x:W/2, y:H-58, targetX:W/2, speed:0, prevX:W/2, widenT:0, hurtT:0, swingT:0 };
+function bladeWidth(){ return player.widenT>0 ? 132 : 96; }
+function bladeY(){ return player.y-34; } // blade sits above the character's head / hands
+
+function makeBall(stuck){
+  return { x:player.x, y:bladeY()-10, vx:0, vy:0, r:6, stuck:!!stuck, trail:[] };
+}
+function launchBall(b){
+  const a=rand(-0.6,-Math.PI+0.6); // placeholder replaced below
+  const ang=-Math.PI/2 + rand(-0.45,0.45), sp=330+wave*14;
+  b.vx=Math.cos(ang)*sp; b.vy=Math.sin(ang)*sp; b.stuck=false;
+}
+
+// ---------- invaders ----------
+const ROWS=5, COLS=8;
+const ROW_DEF=[
+  {col:'#f472b6', hp:2, pts:50, type:0}, // squid (top, tough)
+  {col:'#ef4444', hp:1, pts:30, type:1}, // crab
+  {col:'#c084fc', hp:1, pts:30, type:1},
+  {col:'#22d3ee', hp:1, pts:20, type:2}, // octopus
+  {col:'#4ade80', hp:1, pts:10, type:2},
+];
+let invaders=[], form={x:0,y:0,dir:1,speed:22,stepDown:14,shootT:1.2};
+const SPRITES=[
+  ["..X.....X..","...X...X...","..XXXXXXX..",".XX.XXX.XX.","XXXXXXXXXXX","X.XXXXXXX.X","X.X.....X.X","...XX.XX..."], // squid-ish
+  ["..X.....X..","...X...X...","..XXXXXXX..",".XXXXXXXXX.","XX.XXXXX.XX","X.........X","..X.....X..",".X.......X."], // crab-ish
+  ["...XXXX...",".XXXXXXXX.","XX.XXXX.XX","XXXXXXXXXX","..XX..XX..",".XX.XX.XX.","XX......XX",".X......X."], // octopus-ish
+];
+function buildWave(){
+  invaders=[]; form={x:26,y:64,dir:1,speed:20+wave*4,stepDown:14,shootT:1.4};
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    invaders.push({r,c,alive:true,hp:ROW_DEF[r].hp,flashT:0});
+  }
+  bolts=[]; items=[];
+  balls=[makeBall(true)];
+  player.widenT=0; player.hurtT=0;
+}
+function invPos(inv){ return { x:form.x+inv.c*46, y:form.y+inv.r*38, w:32, h:26 }; }
+function aliveCount(){ return invaders.filter(i=>i.alive).length; }
+
+function resetGame(){
+  score=0; lives=3; wave=1; buildWave(); updateHud();
+}
+function updateHud(){
+  document.getElementById('score').textContent=score;
+  document.getElementById('wave').textContent=wave;
+  document.getElementById('hiscore').textContent=hiScore;
+  document.getElementById('lives').textContent='♥'.repeat(Math.max(0,lives))||'―';
+}
+function addScore(n){ score+=n; if(score>hiScore){hiScore=score; localStorage.setItem('saberBreakerHi',hiScore);} updateHud(); }
+
+// ---------- effects ----------
+function burst(x,y,col,n=12,sp=150){
+  for(let i=0;i<n;i++){ const a=Math.random()*6.283, s=rand(30,sp);
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-30,life:rand(.3,.7),t:0,col,size:rand(1.5,3.4)}); }
+}
+function ring(x,y,col){ rings.push({x,y,r:6,t:0,col}); }
+
+// ---------- damage / life ----------
+function damage(){
+  if(player.hurtT>0) return;
+  lives--; updateHud(); player.hurtT=1.4; shake=0.35;
+  beep(160,0.25,'sawtooth',0.07,-110); burst(player.x,player.y-10,'#ef4444',18,180);
+  flashes.push({col:'#ef4444',t:0});
+  if(lives<=0){ gameOver(); }
+}
+function gameOver(){
+  state='over'; showOverlay('GAME OVER', `インベーダーの侵攻を止められなかった…<br>SCORE <b>${score}</b> ／ WAVE <b>${wave}</b>`, '↻ もう一度');
+  beep(220,0.5,'sawtooth',0.06,-160);
+}
+function showOverlay(title, html, btn){
+  const ov=document.getElementById('overlay');
+  ov.querySelector('h1').innerHTML=title==='GAME OVER'
+    ? `<span class="pink">GAME OVER</span>`
+    : 'SABER<br>BREAKER<br><span class="pink" style="font-size:17px">― ルミナス・インベーダー崩し ―</span>';
+  ov.querySelector('p').innerHTML=html;
+  document.getElementById('bigBtn').textContent=btn;
+  ov.classList.remove('hidden');
+}
+function hideOverlay(){ document.getElementById('overlay').classList.add('hidden'); }
+
+// ---------- invader shooting ----------
+function invaderShoot(dt){
+  form.shootT-=dt;
+  const maxBolts = Math.min(2+Math.floor(wave/2),5);
+  if(form.shootT<=0 && bolts.length<maxBolts){
+    form.shootT=rand(0.55,1.25) * Math.max(0.45, 1-(wave-1)*0.08);
+    // a random bottom-most alive invader in its column shoots
+    const colsAlive=[...new Set(invaders.filter(i=>i.alive).map(i=>i.c))];
+    if(colsAlive.length){
+      const c=colsAlive[Math.floor(Math.random()*colsAlive.length)];
+      const cand=invaders.filter(i=>i.alive&&i.c===c).sort((a,b)=>b.r-a.r)[0];
+      const p=invPos(cand);
+      bolts.push({x:p.x+p.w/2, y:p.y+p.h+2, vy:195+wave*12, t:0});
+      beep(880,0.08,'square',0.025,-500);
+    }
+  }
+}
+
+// ---------- update ----------
+function update(dt){
+  time+=dt;
+  if(shake>0) shake-=dt;
+  // particles / rings / flashes always animate
+  particles=particles.filter(p=>(p.t+=dt)<p.life); particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=260*dt;});
+  rings=rings.filter(r=>(r.t+=dt)<0.35); flashes=flashes.filter(f=>(f.t+=dt)<0.22);
+  if(state!=='playing') return;
+
+  // player movement (towards targetX, delta-time)
+  player.prevX=player.x;
+  const dx=player.targetX-player.x;
+  player.x+=clamp(dx, -620*dt, 620*dt);
+  player.x=clamp(player.x, bladeWidth()/2+4, W-bladeWidth()/2-4);
+  player.speed=dt>0?(player.x-player.prevX)/dt:0;
+  if(Math.abs(player.speed)>40) player.swingT=Math.min(0.3,player.swingT+dt*2); else player.swingT=Math.max(0,player.swingT-dt);
+  if(player.widenT>0) player.widenT-=dt;
+  if(player.hurtT>0) player.hurtT-=dt;
+
+  // stuck ball follows blade
+  balls.forEach(b=>{ if(b.stuck){ b.x=player.x; b.y=bladeY()-10; } });
+
+  // formation movement
+  const alive=aliveCount();
+  if(alive===0){ state='waveclear'; waveClearT=1.6; addScore(200); beep(660,0.12,'square',0.05,440); return; }
+  const speedBoost = 1 + (ROWS*COLS-alive)/(ROWS*COLS)*1.6;
+  form.x += form.dir * form.speed * speedBoost * dt;
+  let minX=1e9,maxX=-1e9,maxY=-1e9;
+  invaders.forEach(i=>{ if(!i.alive) return; const p=invPos(i); minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x+p.w); maxY=Math.max(maxY,p.y+p.h); });
+  if(minX<6 && form.dir<0){ form.dir=1; form.y+=form.stepDown; }
+  if(maxX>W-6 && form.dir>0){ form.dir=-1; form.y+=form.stepDown; }
+  if(maxY>=player.y-44){ gameOver(); return; }
+  invaders.forEach(i=>{ if(i.flashT>0) i.flashT-=dt; });
+
+  invaderShoot(dt);
+
+  // bolts
+  bolts=bolts.filter(b=>b.y<H+12);
+  for(const b of bolts){ b.y+=b.vy*dt; b.t+=dt;
+    // bolt vs blade -> blocked!
+    if(Math.abs(b.y-bladeY())<7 && Math.abs(b.x-player.x)<bladeWidth()/2){
+      b.y=1e9; addScore(5); burst(b.x,bladeY(),SABER_COL,6,110); ring(b.x,bladeY(),SABER_COL); beep(1200,0.05,'square',0.04);
+      continue;
+    }
+    // bolt vs character body
+    if(b.y>player.y-22 && b.y<player.y+16 && Math.abs(b.x-player.x)<15){
+      b.y=1e9; damage(); if(state!=='playing') return;
+    }
+  }
+  bolts=bolts.filter(b=>b.y<1e8);
+
+  // items
+  items=items.filter(it=>it.y<H+16);
+  for(const it of items){ it.y+=it.vy*dt; it.t+=dt;
+    if(it.y>bladeY()-10 && it.y<player.y+14 && Math.abs(it.x-player.x)<bladeWidth()/2+8){
+      it.y=1e9;
+      if(it.kind==='W'){ player.widenT=12; addScore(20); beep(520,0.12,'square',0.05,260); }
+      if(it.kind==='M' && balls.length<3){ const nb=makeBall(false); nb.x=player.x; nb.y=bladeY()-14; nb.vx=180; nb.vy=-300; balls.push(nb); addScore(20); beep(520,0.12,'square',0.05,380); }
+      burst(it.x,bladeY(),'#facc15',10,120);
+    }
+  }
+  items=items.filter(it=>it.y<1e8);
+
+  // balls
+  for(const b of balls){
+    if(b.stuck) continue;
+    b.trail.push({x:b.x,y:b.y}); if(b.trail.length>18) b.trail.shift();
+    b.x+=b.vx*dt; b.y+=b.vy*dt;
+    const sp=Math.hypot(b.vx,b.vy), want=330+wave*14;
+    if(sp>0){ b.vx*=want/sp; b.vy*=want/sp; }
+    if(b.x<b.r){b.x=b.r;b.vx=Math.abs(b.vx);beep(300,0.04,'square',0.03);}
+    if(b.x>W-b.r){b.x=W-b.r;b.vx=-Math.abs(b.vx);beep(300,0.04,'square',0.03);}
+    if(b.y<b.r+2){b.y=b.r+2;b.vy=Math.abs(b.vy);beep(300,0.04,'square',0.03);}
+    // blade bounce: angle depends on hit position on the blade
+    if(b.vy>0 && b.y+b.r>=bladeY()-4 && b.y+b.r<=bladeY()+12 && Math.abs(b.x-player.x)<bladeWidth()/2+b.r){
+      const rel=clamp((b.x-player.x)/(bladeWidth()/2),-1,1);
+      const ang=-Math.PI/2 + rel*1.05, spd=330+wave*14;
+      b.vx=Math.cos(ang)*spd + player.speed*0.12; b.vy=Math.sin(ang)*spd;
+      const ns=Math.hypot(b.vx,b.vy); b.vx*=spd/ns; b.vy*=spd/ns;
+      b.y=bladeY()-4-b.r; player.swingT=0.3;
+      burst(b.x,bladeY(),SABER_COL,7,130); ring(b.x,bladeY(),SABER_COL);
+      beep(740,0.06,'square',0.045,180);
+    }
+    // invader collision
+    for(const inv of invaders){
+      if(!inv.alive) continue;
+      const p=invPos(inv);
+      if(b.x+b.r>p.x && b.x-b.r<p.x+p.w && b.y+b.r>p.y && b.y-b.r<p.y+p.h){
+        // bounce on the axis of least penetration
+        const penL=(b.x+b.r)-p.x, penR=(p.x+p.w)-(b.x-b.r), penT=(b.y+b.r)-p.y, penB=(p.y+p.h)-(b.y-b.r);
+        const m=Math.min(penL,penR,penT,penB);
+        if(m===penL) b.vx=-Math.abs(b.vx); else if(m===penR) b.vx=Math.abs(b.vx);
+        else if(m===penT) b.vy=-Math.abs(b.vy); else b.vy=Math.abs(b.vy);
+        inv.hp--; inv.flashT=0.12;
+        if(inv.hp<=0){
+          inv.alive=false; addScore(ROW_DEF[inv.r].pts);
+          burst(p.x+p.w/2,p.y+p.h/2,ROW_DEF[inv.r].col,16,190); ring(p.x+p.w/2,p.y+p.h/2,ROW_DEF[inv.r].col);
+          flashes.push({col:ROW_DEF[inv.r].col,t:0}); shake=Math.max(shake,0.12);
+          beep(200,0.16,'square',0.06,-140);
+          if(Math.random()<0.14) items.push({x:p.x+p.w/2,y:p.y+p.h/2,vy:110,t:0,kind:Math.random()<0.55?'W':'M'});
+        } else beep(980,0.05,'square',0.04);
+        break;
+      }
+    }
+  }
+  // ball lost
+  const before=balls.length;
+  balls=balls.filter(b=>b.y-b.r<H+4);
+  if(balls.length<before){
+    if(balls.length===0){ damage(); if(state==='playing'){ balls=[makeBall(true)]; } }
+  }
+}
+
+// ---------- drawing ----------
+function drawInvader(p, def, flash){
+  const spr=SPRITES[def.type], u=p.w/spr[0].length;
+  ctx.save();
+  ctx.shadowColor=flash?'#ffffff':def.col; ctx.shadowBlur=flash?16:10;
+  ctx.fillStyle=flash?'#ffffff':def.col;
+  const bob=(Math.floor(time*2)%2===0)?0:1; // 2-frame leg wiggle feel
+  spr.forEach((row,ri)=>{ for(let ci=0;ci<row.length;ci++){
+    if(row[ci]!=='X') continue;
+    let y=p.y+ri*u; if(ri>=spr.length-2) y+=bob? -u*0.4 : u*0.4;
+    ctx.fillRect(p.x+ci*u, y, u+0.6, u+0.6);
+  }});
+  ctx.restore();
+  if(def.hp>1){ /* tough top row shows a shield tint handled by flash/hp in caller */ }
+}
+function drawCharacter(){
+  const x=player.x, y=player.y, u=4.7, s=1.18;
+  // aura
+  const ag=ctx.createRadialGradient(x,y-14,0,x,y-14,42);
+  ag.addColorStop(0,'rgba(34,211,238,0.20)'); ag.addColorStop(1,'rgba(34,211,238,0)');
+  ctx.fillStyle=ag; ctx.beginPath(); ctx.arc(x,y-14,42,0,6.283); ctx.fill();
+  // glowing ring at feet (cyan, your side)
+  ctx.save(); ctx.strokeStyle='#22d3ee'; ctx.shadowColor='#22d3ee'; ctx.shadowBlur=9; ctx.lineWidth=1.8;
+  ctx.beginPath(); ctx.ellipse(x,y+13,20,6.5,0,0,6.283); ctx.stroke(); ctx.restore();
+  if(player.hurtT>0 && Math.floor(time*14)%2===0) ctx.globalAlpha=0.35;
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x,y+13,17,5.5,0,0,6.283); ctx.fill();
+  // legs
+  const moving=Math.abs(player.speed)>30, run=moving?Math.floor(time*10)%2:-1;
+  [[-4,0],[2,1]].forEach(([off,side])=>{
+    const len=(run===-1?3:(side===0)===(run===0)?3.2:1.8)*u*0.9;
+    ctx.fillStyle='#ffd9b3'; ctx.fillRect(x+off*u*0.9, y, 2*u*0.9, len);
+    ctx.fillStyle='#f8fafc'; ctx.fillRect(x+off*u*0.9, y+len, 2*u*0.9, 0.8*u*0.9);
+    ctx.fillStyle='#1f2937'; ctx.fillRect(x+(off-0.3)*u*0.9, y+len+0.8*u*0.9, 2.6*u*0.9, 1.2*u*0.9);
+  });
+  // body sprite (back view: player faces the invaders)
+  const HEAD_BACK=["....CCCCCC....","..CCCCCCCCCC..","..CCCCCCCCCC..","..CCCCCCCCCC..","..CCCCCCCCCC..","...SSSSSSSS..."];
+  const BODY=[".ATTTTTTTTTTA.",".ATTTTTTTTTTA.","..TTTTTTTTTT..","..TTTTTTTTTT..","..WWWWWWWWWW..","..WWWWWWWWWW.."];
+  const pal={C:'#2563eb',S:'#ffd9b3',T:'#0ea5e9',A:'#ffd9b3',W:'#f8fafc'};
+  const top=y-12*u*0.9;
+  HEAD_BACK.concat(BODY).forEach((row,ri)=>{ for(let ci=0;ci<row.length;ci++){
+    const ch=row[ci]; if(ch==='.') continue; ctx.fillStyle=pal[ch];
+    ctx.fillRect(x-7*u*0.9+ci*u*0.9, top+ri*u*0.9, u*0.9+0.5, u*0.9+0.5);
+  }});
+  ctx.globalAlpha=1;
+  // arms raised to the hilt (centre of the blade)
+  ctx.strokeStyle='#ffd9b3'; ctx.lineWidth=4; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(x-10,y-16); ctx.lineTo(x-3,bladeY()+4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x+10,y-16); ctx.lineTo(x+3,bladeY()+4); ctx.stroke();
+}
+function drawBlade(){
+  const bw=bladeWidth(), by=bladeY(), x0=player.x-bw/2, x1=player.x+bw/2;
+  const flick=0.9+0.1*Math.sin(time*28+player.x*0.1);
+  ctx.save(); ctx.lineCap='round';
+  // swing / movement afterimages: ghost blades trailing behind motion
+  const ghostN=3;
+  for(let i=ghostN;i>=1;i--){
+    const gx=player.x - player.speed*0.028*i;
+    ctx.globalAlpha=0.10*(ghostN-i+1) * (Math.abs(player.speed)>60?1:0.35);
+    ctx.strokeStyle=SABER_COL; ctx.shadowColor=SABER_COL; ctx.shadowBlur=10; ctx.lineWidth=11;
+    ctx.beginPath(); ctx.moveTo(gx-bw/2,by); ctx.lineTo(gx+bw/2,by); ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+  // hilt at centre: dark grip + silver band (same as Luminous saber)
+  ctx.shadowBlur=0; ctx.strokeStyle='#1f2937'; ctx.lineWidth=7;
+  ctx.beginPath(); ctx.moveTo(player.x-8,by); ctx.lineTo(player.x+8,by); ctx.stroke();
+  ctx.strokeStyle='#d1d5db'; ctx.lineWidth=7.6;
+  ctx.beginPath(); ctx.moveTo(player.x-2,by); ctx.lineTo(player.x+2,by); ctx.stroke();
+  // blade: coloured glow / pale mid / white core (left & right of hilt)
+  const segs=[[x0,player.x-7],[player.x+7,x1]];
+  for(const [a,b] of segs){
+    ctx.strokeStyle=SABER_COL; ctx.shadowColor=SABER_COL; ctx.shadowBlur=(player.swingT>0?22:15)*flick;
+    ctx.globalAlpha=0.9; ctx.lineWidth=10.5;
+    ctx.beginPath(); ctx.moveTo(a,by); ctx.lineTo(b,by); ctx.stroke();
+    ctx.strokeStyle=SABER_PALE; ctx.shadowBlur=8; ctx.globalAlpha=0.95; ctx.lineWidth=5.8;
+    ctx.beginPath(); ctx.moveTo(a,by); ctx.lineTo(b,by); ctx.stroke();
+    ctx.strokeStyle='#ffffff'; ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.lineWidth=3.1;
+    ctx.beginPath(); ctx.moveTo(a,by); ctx.lineTo(b,by); ctx.stroke();
+  }
+  ctx.restore();
+  if(player.widenT>0){ ctx.fillStyle='#facc15'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('WIDE '+Math.ceil(player.widenT), player.x, by-14); }
+}
+function draw(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle='#05010f'; ctx.fillRect(0,0,CW,CH);
+  ctx.save(); ctx.translate(OX,OY); ctx.scale(SCALE,SCALE);
+  if(shake>0) ctx.translate(rand(-1,1)*shake*10, rand(-1,1)*shake*8);
+  // stars
+  for(const st of stars){ ctx.globalAlpha=0.35+0.3*Math.sin(time*2+st.tw); ctx.fillStyle='#e0f2fe'; ctx.fillRect(st.x,st.y,st.s,st.s); }
+  ctx.globalAlpha=1;
+  // neon skyline silhouette at the very back-bottom
+  for(const b of skyline){ ctx.fillStyle='#0b0620'; ctx.fillRect(b.x,H-b.h,b.w,b.h);
+    for(const [wx,wy,c] of b.wins){ ctx.fillStyle=hexA(c,0.5); ctx.fillRect(b.x+wx,H-b.h+wy,3,4); } }
+  // floor grid line at player's feet
+  ctx.strokeStyle='rgba(34,211,238,.25)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,player.y+22); ctx.lineTo(W,player.y+22); ctx.stroke();
+  // danger line: invaders reaching here = invasion
+  ctx.strokeStyle='rgba(244,114,182,.35)'; ctx.setLineDash([6,6]);
+  ctx.beginPath(); ctx.moveTo(0,player.y-44); ctx.lineTo(W,player.y-44); ctx.stroke(); ctx.setLineDash([]);
+
+  // invaders (top tough row shows remaining HP as a white pip)
+  for(const inv of invaders){ if(!inv.alive) continue; const p=invPos(inv); const def=ROW_DEF[inv.r];
+    drawInvader(p,def,inv.flashT>0);
+    if(inv.r===0 && inv.hp===1){ ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fillRect(p.x+p.w/2-2,p.y-5,4,2.4); }
+  }
+  // bolts (enemy red shots)
+  for(const b of bolts){ ctx.save(); ctx.strokeStyle='#ef4444'; ctx.shadowColor='#ef4444'; ctx.shadowBlur=12; ctx.lineWidth=3.4; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(b.x,b.y-8); ctx.lineTo(b.x,b.y+3); ctx.stroke(); ctx.restore(); }
+  // items
+  for(const it of items){ ctx.save(); ctx.translate(it.x,it.y);
+    ctx.fillStyle='rgba(250,204,21,.16)'; ctx.beginPath(); ctx.arc(0,0,11,0,6.283); ctx.fill();
+    ctx.strokeStyle='#facc15'; ctx.shadowColor='#facc15'; ctx.shadowBlur=9; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(0,0,10,0,6.283); ctx.stroke();
+    ctx.fillStyle='#fde68a'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(it.kind,0,0.5); ctx.restore(); }
+  // balls with ribbon ghost trail
+  for(const b of balls){
+    b.trail.forEach((t,i)=>{ const k=i/b.trail.length; ctx.globalAlpha=k*0.30; ctx.fillStyle='#38bdf8';
+      ctx.beginPath(); ctx.arc(t.x,t.y,b.r*(0.4+0.6*k),0,6.283); ctx.fill(); });
+    ctx.globalAlpha=1; ctx.save(); ctx.shadowColor='#7dd3fc'; ctx.shadowBlur=18;
+    const g=ctx.createRadialGradient(b.x-2,b.y-2,0,b.x,b.y,b.r+1);
+    g.addColorStop(0,'#ffffff'); g.addColorStop(0.55,'#bae6fd'); g.addColorStop(1,'#0284c7');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,6.283); ctx.fill(); ctx.restore();
+    if(b.stuck){ ctx.fillStyle='#e0f2fe'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('タップで発射', b.x, b.y-18); }
+  }
+  drawCharacter();
+  drawBlade();
+  // particles & rings
+  for(const p of particles){ ctx.globalAlpha=1-p.t/p.life; ctx.fillStyle=p.col; ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size); }
+  ctx.globalAlpha=1;
+  for(const r of rings){ const k=r.t/0.35; ctx.save(); ctx.globalAlpha=1-k; ctx.strokeStyle=r.col; ctx.shadowColor=r.col; ctx.shadowBlur=10; ctx.lineWidth=2.4;
+    ctx.beginPath(); ctx.arc(r.x,r.y,r.r+k*30,0,6.283); ctx.stroke(); ctx.restore(); }
+  for(const f of flashes){ ctx.fillStyle=hexA(f.col.startsWith('#')?f.col:'#ffffff',(1-f.t/0.22)*0.10); ctx.fillRect(0,0,W,H); }
+  if(state==='waveclear'){ ctx.fillStyle='#fff'; ctx.font='bold 30px sans-serif'; ctx.textAlign='center';
+    ctx.shadowColor='#38bdf8'; ctx.shadowBlur=22; ctx.fillText('WAVE CLEAR!', W/2, H/2); ctx.shadowBlur=0; }
+  if(state==='paused'){ ctx.fillStyle='rgba(5,1,15,.6)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#fff'; ctx.font='bold 26px sans-serif'; ctx.textAlign='center'; ctx.fillText('PAUSED', W/2, H/2); }
+  ctx.restore();
+}
+
+// ---------- main loop (delta-time) ----------
+let lastT=performance.now();
+function loop(now){
+  let dt=(now-lastT)/1000; lastT=now;
+  dt=Math.min(dt,0.05); // clamp big gaps (tab switch etc.)
+  if(state==='waveclear'){ waveClearT-=dt;
+    particles=particles.filter(p=>(p.t+=dt)<p.life);
+    if(waveClearT<=0){ wave++; buildWave(); updateHud(); state='playing'; } }
+  else update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- input ----------
+function toGameX(clientX){
+  const r=cv.getBoundingClientRect();
+  return (clientX-r.left-OX)/SCALE;
+}
+let dragging=false;
+cv.addEventListener('pointerdown',e=>{ e.preventDefault(); dragging=true;
+  player.targetX=clamp(toGameX(e.clientX),0,W);
+  if(state==='playing') balls.forEach(b=>{ if(b.stuck) launchBall(b); });
+},{passive:false});
+cv.addEventListener('pointermove',e=>{ if(!dragging) return; e.preventDefault(); player.targetX=clamp(toGameX(e.clientX),0,W); },{passive:false});
+window.addEventListener('pointerup',()=>dragging=false);
+window.addEventListener('pointercancel',()=>dragging=false);
+const keys={};
+window.addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  if(e.key===' '||e.key==='Enter'){ if(state==='playing') balls.forEach(b=>{ if(b.stuck) launchBall(b); }); e.preventDefault(); }
+  if(e.key==='p'||e.key==='P') togglePause();
+});
+window.addEventListener('keyup',e=>keys[e.key]=false);
+setInterval(()=>{ if(state!=='playing') return;
+  if(keys['ArrowLeft']||keys['a']) player.targetX=clamp(player.targetX-14,0,W);
+  if(keys['ArrowRight']||keys['d']) player.targetX=clamp(player.targetX+14,0,W);
+},16);
+document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+
+function togglePause(){
+  if(state==='playing'){ state='paused'; }
+  else if(state==='paused'){ state='playing'; lastT=performance.now(); }
+}
+document.getElementById('pauseBtn').addEventListener('click',togglePause);
+document.getElementById('subBtn').addEventListener('click',()=>{ muted=!muted; document.getElementById('subBtn').textContent=muted?'音 OFF 中（タップでON）':'音 ON / OFF'; });
+document.getElementById('bigBtn').addEventListener('click',()=>{
+  beep(440,0.08,'square',0.05,220);
+  resetGame(); hideOverlay(); state='playing'; lastT=performance.now();
+});
+
+resize(); buildWave(); updateHud();
+requestAnimationFrame(()=>{ resize(); requestAnimationFrame(loop); });
+</script>
+</body>
+</html>
