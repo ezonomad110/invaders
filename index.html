@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.11 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v2.12 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -395,7 +395,7 @@ function fireBallFrom(src){
   blasterSound();
 }
 function spawnEnemyBall(){ const u = pickShooter(); if (u) fireBallFrom(u); }
-function maxBalls(){ return Math.min(2 + Math.floor((wave - 1) / 2), 4); }
+function maxBalls(){ return Math.min(3 + Math.floor((wave - 1) / 2), 6); }
 
 function damage(){
   if (player.hurtT > 0) return;
@@ -479,7 +479,7 @@ function update(dt){
       if (balls.length < maxBalls() + 1) fireBallFrom(u.alive ? u : pickShooter());
     }
   } else if (shootT <= 0){
-    shootT = rand(1.5, 2.6) * Math.max(0.5, 1 - (wave - 1) * 0.07);
+    shootT = rand(1.0, 1.9) * Math.max(0.45, 1 - (wave - 1) * 0.06);
     if (balls.length < maxBalls()){ const u = pickShooter(); if (u) pendingShot = { u, t: 0.45 }; }
   }
 
