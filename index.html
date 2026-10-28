@@ -16,7 +16,8 @@
   .hud-label{font-size:10px;color:#a5b4fc;display:block;letter-spacing:.15em}
   #hud button{background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.5);color:#bae6fd;border-radius:999px;padding:5px 12px;font-size:12px}
   #game{position:relative;flex:1;min-height:0}
-  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  #game,#touch,#hud{touch-action:none}
   #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:rgba(5,1,15,.74);z-index:5}
   #overlay.hidden{display:none}
   #overlay h1{font-size:30px;line-height:1.15;color:#fff;letter-spacing:.08em;text-shadow:0 0 6px #38bdf8,0 0 22px #38bdf8,0 0 44px #2563eb}
@@ -146,7 +147,9 @@ let time = 0, waveClearT = 0, shake = 0, maxChain = 0;
 let balls = [], particles = [], rings = [], flashes = [], pops = [];
 let shootT = 1.6;
 
-const player = { x: 0, targetX: 0, prevX: 0, speed: 0, swingT: 0, swingCd: 0, hurtT: 0, saberTrail: [] };
+const player = { x: 0, targetX: 0, prevX: 0, speed: 0, swingT: 0, swingAnimT: 0, swingCd: 0, hurtT: 0, saberTrail: [] };
+const SWING_ANIM = 0.36; // swing animation duration (slower than v2.2's 0.24)
+const SWING_ACTIVE = 0.55; // swing + lingering afterimage both carry a hitbox
 
 // ---------- invaders ----------
 // Formation lives in field coords. Anchor (fx, fz) moves sideways and steps closer.
@@ -271,9 +274,10 @@ function update(dt){
   player.x = clamp(player.x, -0.88, 0.88);
   player.speed = dt > 0 ? (player.x - player.prevX) / dt : 0;
   if (player.swingT > 0) player.swingT -= dt;
+  if (player.swingAnimT > 0) player.swingAnimT -= dt;
   if (player.swingCd > 0) player.swingCd -= dt;
   if (player.hurtT > 0) player.hurtT -= dt;
-  player.saberTrail = player.saberTrail.filter(s => (s.t += dt) < 0.3);
+  player.saberTrail = player.saberTrail.filter(s => (s.t += dt) < 0.5);
 
   // formation: sideways, step closer at each edge (invader style)
   const alive = aliveUnits();
@@ -346,24 +350,34 @@ function update(dt){
     }
     if (b.z < 0.80) b.resolved = false;
 
-    // reaching the player's plane
-    if (b.vz > 0 && b.z >= PLAYER_Z - 0.02 && !b.resolved){
-      b.resolved = true;
-      const dxp = b.x - player.x;
-      if (player.swingT > 0 && Math.abs(dxp) < 0.30){
+    // saber zone: while the ball crosses the zone in front of the player,
+    // an active swing OR its lingering afterimage (swingT) can return it.
+    // The window is a z-range, not a single instant, so timing is forgiving.
+    const dxp = b.x - player.x;
+    if (b.vz > 0 && !b.resolved && b.z >= PLAYER_Z - 0.17 && b.z <= PLAYER_Z + 0.005){
+      if (player.swingT > 0 && Math.abs(dxp) < 0.33){
+        b.resolved = true;
         // RETURN! chain grows for this ball
         b.chain++; b.returned = true; b.pierce = b.chain; if (b.hitSet) b.hitSet.clear();
         if (b.chain > maxChain){ maxChain = b.chain; updateHud(); }
         const S2 = ballSpeed() + b.chain * 0.022;
-        const rel = clamp(dxp / 0.30, -1, 1);
-        b.vz = -Math.cos(rel * 0.85) * S2; b.vx = Math.sin(rel * 0.85) * S2 + player.speed * 0.08;
-        const ns = Math.hypot(b.vx, b.vz); b.vx *= S2 / ns; b.vz *= S2 / ns;
-        b.z = PLAYER_Z - 0.04;
+        // Return angle is set by the SABER's angle at contact (swing phase),
+        // plus where on the swing the ball met it, plus the player's motion:
+        // early in the swing the blade sends it one way, late the other way.
+        const q = player.swingAnimT > 0 ? 1 - player.swingAnimT / SWING_ANIM : 0.5;
+        const phi = clamp((dxp / 0.33) * 0.75 + (0.5 - q) * 1.05 + clamp(player.speed, -1.6, 1.6) * 0.10, -1.15, 1.15);
+        b.vz = -Math.cos(phi) * S2; b.vx = Math.sin(phi) * S2;
+        b.z = PLAYER_Z - 0.05;
         burstAt(b.x, PLAYER_Z, chainColor(b.chain), 12, 1.1); ringAt(b.x, PLAYER_Z, chainColor(b.chain));
         flashes.push({ col: chainColor(b.chain), t: 0 });
         if (b.chain >= 2) pop(b.chain + ' CHAIN!', chainColor(b.chain), b.chain >= 4);
         beep(660 + b.chain * 60, 0.08, 'square', 0.05, 220);
-      } else if (Math.abs(dxp) < 0.105){
+      }
+    }
+    // past the saber zone unreturned: body hit or slip past (safe)
+    if (b.vz > 0 && !b.resolved && b.z >= PLAYER_Z + 0.03){
+      b.resolved = true;
+      if (Math.abs(dxp) < 0.105){
         // direct body hit
         b.z = 99; // remove below
         if (b.chain >= 3) pop('CHAIN BREAK', '#ef4444', true);
@@ -492,7 +506,7 @@ function drawCharacter(){
   ctx.globalAlpha = 1;
   // ---- lightsaber arm + saber (same construction as Luminous tennis, longer blade) ----
   let th = -0.9;
-  if (player.swingT > 0){ const q = 1 - player.swingT / 0.24; th = -2.35 + 2.9 * q; }
+  if (player.swingAnimT > 0){ const q = 1 - player.swingAnimT / SWING_ANIM; th = -2.35 + 2.9 * q; }
   const sx = x + 10, sy = headY + 16 + bob, hx = sx + Math.cos(th) * 6.4, hy = sy + Math.sin(th) * 6.4;
   ctx.strokeStyle = GREEN; ctx.lineWidth = 4.2; ctx.lineCap = 'round'; // green arm to the hilt
   ctx.beginPath(); ctx.moveTo(x + 5, headY + 18 + bob); ctx.lineTo(hx, hy); ctx.stroke();
@@ -500,10 +514,10 @@ function drawCharacter(){
   const dxv = Math.cos(th), dyv = Math.sin(th);
   const bx = hx + dxv * 2.4, by = hy + dyv * 2.4;
   const txp = hx + dxv * 16.5 * 2, typ = hy + dyv * 16.5 * 2;
-  if (player.swingT > 0) player.saberTrail.push({ bx, by, tx: txp, ty: typ, t: 0 });
+  if (player.swingAnimT > 0) player.saberTrail.push({ bx, by, tx: txp, ty: typ, t: 0 });
   ctx.save(); ctx.lineCap = 'round';
   player.saberTrail.forEach(sp => {
-    const k = 1 - sp.t / 0.3;
+    const k = 1 - sp.t / 0.5;
     ctx.globalAlpha = k * 0.45; ctx.strokeStyle = saber; ctx.shadowColor = saber; ctx.shadowBlur = 10; ctx.lineWidth = 3 + 10 * k;
     ctx.beginPath(); ctx.moveTo(sp.bx, sp.by); ctx.lineTo(sp.tx, sp.ty); ctx.stroke();
     ctx.globalAlpha = k * 0.5; ctx.strokeStyle = '#fff'; ctx.shadowBlur = 0; ctx.lineWidth = 2.6;
@@ -515,7 +529,7 @@ function drawCharacter(){
   ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 4.8;
   ctx.beginPath(); ctx.moveTo(hx + dxv * 0.9, hy + dyv * 0.9); ctx.lineTo(hx + dxv * 1.7, hy + dyv * 1.7); ctx.stroke();
   const flick = 0.9 + 0.1 * Math.sin(time * 26 + player.x * 8);
-  ctx.strokeStyle = saber; ctx.shadowColor = saber; ctx.shadowBlur = (player.swingT > 0 ? 22 : 15) * flick;
+  ctx.strokeStyle = saber; ctx.shadowColor = saber; ctx.shadowBlur = (player.swingAnimT > 0 ? 22 : 15) * flick;
   ctx.globalAlpha = 0.9; ctx.lineWidth = 10.4;
   ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(txp, typ); ctx.stroke();
   ctx.strokeStyle = saberPale; ctx.shadowBlur = 8; ctx.globalAlpha = 0.95; ctx.lineWidth = 5.8;
@@ -596,7 +610,7 @@ function loop(now){
 // (The old one-finger drag / swipe-up controls were dropped: poor operability.)
 function doSwing(){
   if (state !== 'playing' || player.swingCd > 0) return;
-  player.swingT = 0.24; player.swingCd = 0.30;
+  player.swingT = SWING_ACTIVE; player.swingAnimT = SWING_ANIM; player.swingCd = 0.42;
   swingSound();
 }
 const stick = { x: 0, active: false, id: null };
@@ -623,6 +637,16 @@ const stick = { x: 0, active: false, id: null };
   el.addEventListener('touchstart', e => { e.preventDefault(); doSwing(); }, { passive: false });
 })();
 document.addEventListener('touchmove', e => { if (e.target === cv) e.preventDefault(); }, { passive: false });
+// iPhone Safari zoom countermeasures: it ignores user-scalable=no, so block
+// pinch 'gesture' events and double-tap zoom inside the game area directly.
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = performance.now();
+  if (now - lastTouchEnd < 350 && e.target && e.target.closest && e.target.closest('#game, #hud')) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.key] = true;
