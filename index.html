@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.6 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v2.7 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -32,12 +32,12 @@
   #longAgo{display:none}
   #overlay.title #longAgo{display:block;color:#4bd5ee;font-size:15px;letter-spacing:.03em;margin-bottom:8px;text-shadow:0 0 12px rgba(75,213,238,.55)}
   #crawlWrap{display:none}
-  #overlay.title #crawlWrap{display:block;position:relative;width:min(86vw,330px);height:288px;overflow:hidden;perspective:230px;-webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent)}
-  #crawl{position:absolute;left:0;right:0;top:0;transform-origin:50% 100%;animation:crawlMove 40s linear infinite;color:#feda4a;font-weight:700;font-size:14.5px;line-height:1.8;text-align:justify;text-shadow:0 0 9px rgba(254,218,74,.30)}
+  #overlay.title #crawlWrap{display:block;position:relative;width:min(94vw,430px);height:330px;overflow:hidden;perspective:300px;-webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent)}
+  #crawl{position:absolute;left:0;right:0;top:0;width:100%;transform-origin:50% 100%;animation:crawlMove 52s linear infinite;color:#feda4a;font-weight:800;font-size:19px;line-height:1.9;text-align:justify;text-shadow:0 0 9px rgba(254,218,74,.30)}
   #crawl p{margin-bottom:15px}
   #crawl .cw-center{text-align:center}
-  #crawl .cw-big{font-size:21px;letter-spacing:.14em}
-  @keyframes crawlMove{0%{transform:rotateX(54deg) translateY(102%)}100%{transform:rotateX(54deg) translateY(-125%)}}
+  #crawl .cw-big{font-size:27px;letter-spacing:.14em}
+  @keyframes crawlMove{0%{transform:rotateX(47deg) translateY(102%)}100%{transform:rotateX(47deg) translateY(-125%)}}
   #overlay.title #ovH1,#overlay.title #ovP{display:none}
   /* Retro-Tennis-style touch controls: stick (left thumb) + swing button (right thumb), overlaid on the field */
   #touch{position:absolute;left:0;right:0;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end;padding:0 16px;z-index:4;pointer-events:none}
@@ -279,6 +279,7 @@ let units = [], form = { fx: 0, fz: 0.02, dir: 1, speed: 0.055 };
 const COLS = 7, ROWS = 4, COL_DX = 0.245, ROW_DZ = 0.072;
 const ROW_COL = ['#ef4444', '#c084fc', '#22d3ee', '#4ade80'];
 const ROW_PTS = [30, 20, 20, 10];
+const ROW_HP = [3, 2, 1, 1]; // back rows wear armour - back attacks get their moment
 const SPRITES = [
   ["X..X...X..X","XX..X.X..XX",".XXXXXXXXX.","..XXXXXXX..",".XX.XXX.XX.","XX.......XX","X.........X"], // TIE-ish (back)
   ["..X.....X..","...X...X...","..XXXXXXX..",".XXXXXXXXX.","XX.XXXXX.XX","X.........X","..X.....X.."], // crab
@@ -320,7 +321,8 @@ function buildWave(){
   }
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++){
     if (occupied.has(key(c, r))) continue;
-    units.push({ kind: 'normal', col: c, row: r, rows: 1, wCells: 1, hp: r === 0 ? 2 : 1, maxHp: r === 0 ? 2 : 1, pts: ROW_PTS[r], flashT: 0 });
+    const hp0 = ROW_HP[r] + (wave >= 5 && r === 2 ? 1 : 0);
+    units.push({ kind: 'normal', col: c, row: r, rows: 1, wCells: 1, hp: hp0, maxHp: hp0, pts: ROW_PTS[r], flashT: 0 });
   }
   // --- special enemy conversions (Star-Wars-flavoured variants) ---
   const convert = (c, r, kind, hp, pts, shieldHp) => {
@@ -332,9 +334,9 @@ function buildWave(){
     if (shieldHp) u.shieldHp = shieldHp;
   };
   if (wave >= 2){ convert(1, 2, 'weaver', 1, 30); convert(5, 2, 'weaver', 1, 30); }
-  if (wave >= 3){ convert(2, 1, 'diver', 2, 40); convert(4, 1, 'diver', 2, 40); convert(0, 1, 'orbiter', 2, 40); convert(6, 1, 'orbiter', 2, 40); }
+  if (wave >= 3){ convert(2, 1, 'diver', 3, 40); convert(4, 1, 'diver', 3, 40); convert(0, 1, 'orbiter', 2, 40); convert(6, 1, 'orbiter', 2, 40); }
   if (wave >= 4){ convert(2, 3, 'shield', 2, 60, 3); convert(4, 3, 'shield', 2, 60, 3); }
-  if (wave >= 5){ convert(3, 2, 'weaver', 1, 30); convert(0, 2, 'diver', 2, 40); convert(6, 2, 'diver', 2, 40); }
+  if (wave >= 5){ convert(3, 2, 'weaver', 1, 30); convert(0, 2, 'diver', 3, 40); convert(6, 2, 'diver', 3, 40); }
   units.forEach(u => { u.alive = true; u.phase = (u.col * 1.73 + u.row * 2.39) % 6.283; if (u.shieldHp === undefined) u.shieldHp = 0; });
 }
 const KIND_W = { normal: 0.19, weaver: 0.19, diver: 0.21, orbiter: 0.18, shield: 0.22, mid: 0.30, big: 0.62, super: 1.12 };
@@ -511,7 +513,7 @@ function update(dt){
             if (isBoss(u)) pop(u.kind === 'super' ? 'SUPER BOSS DOWN!' : u.kind === 'big' ? 'BIG BOSS DOWN!' : 'MID BOSS DOWN!', '#facc15', true);
           } else {
             beep(520, 0.07, 'square', 0.045, -160);
-            if (isBoss(u) || u.kind === 'shield') pop('HIT! HP ' + u.hp, '#facc15', false);
+            if (isBoss(u) || u.kind === 'shield' || u.maxHp >= 3) pop('HIT! HP ' + u.hp, '#facc15', false);
           }
         }
         // --- how the bolt leaves the enemy depends on where it struck ---
@@ -561,7 +563,7 @@ function update(dt){
         // plus where on the swing the ball met it, plus the player's motion:
         // early in the swing the blade sends it one way, late the other way.
         const q = player.swingAnimT > 0 ? 1 - player.swingAnimT / SWING_ANIM : 0.5;
-        const phi = clamp((dxp / 0.33) * 0.75 + (0.5 - q) * 1.05 + clamp(player.speed, -1.6, 1.6) * 0.10, -1.15, 1.15);
+        const phi = clamp((dxp / 0.33) * 1.05 + (0.5 - q) * 1.05 + clamp(player.speed, -1.6, 1.6) * 0.10, -1.32, 1.32);
         b.vz = -Math.cos(phi) * S2; b.vx = Math.sin(phi) * S2;
         b.z = PLAYER_Z - 0.05;
         burstAt(b.x, PLAYER_Z, chainColor(b.chain), 12, 1.1); ringAt(b.x, PLAYER_Z, chainColor(b.chain));
@@ -638,6 +640,14 @@ function drawInvader(u){
       ctx.fillRect(pr.x - wPx / 2 + ci * cell, yy, cell + 0.6, cell + 0.6);
     }});
     if (u.kind === 'weaver'){ ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.fillRect(pr.x - cell * 0.6, pr.y - cell * 0.6, cell * 1.2, cell * 1.2); }
+    if (u.maxHp >= 2){ // armour pips: how many more hits this one takes
+      const pw = 5.2 * pr.scale, y0 = pr.y + hPx / 2 + 4.5 * pr.scale;
+      for (let i = 0; i < u.maxHp; i++){
+        ctx.globalAlpha = i < u.hp ? 0.95 : 0.22; ctx.fillStyle = col; ctx.shadowBlur = i < u.hp ? 6 : 0;
+        ctx.beginPath(); ctx.arc(pr.x + (i - (u.maxHp - 1) / 2) * pw, y0, 1.7 * pr.scale, 0, 6.283); ctx.fill();
+      }
+      ctx.globalAlpha = 1; ctx.shadowBlur = 9;
+    }
     if (u.shieldHp > 0){
       ctx.globalAlpha = 0.55 + 0.2 * Math.sin(time * 5 + (u.phase || 0));
       ctx.strokeStyle = '#67e8f9'; ctx.shadowColor = '#67e8f9'; ctx.shadowBlur = 12; ctx.lineWidth = 1.8;
