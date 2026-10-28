@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.10 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v2.11 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -269,7 +269,7 @@ let dangerLevel = 0, warnT = 0, warned = false, hitstop = 0;
 let balls = [], particles = [], rings = [], flashes = [], pops = [];
 let shootT = 1.6;
 
-const player = { x: 0, targetX: 0, prevX: 0, speed: 0, swingT: 0, swingAnimT: 0, swingCd: 0, hurtT: 0, saberTrail: [] };
+const player = { x: 0, targetX: 0, prevX: 0, speed: 0, swingT: 0, swingAnimT: 0, swingCd: 0, swingBufferT: 0, hurtT: 0, saberTrail: [] };
 const SWING_ANIM = 0.36; // swing animation duration (slower than v2.2's 0.24)
 const SWING_ACTIVE = 0.55; // swing + lingering afterimage both carry a hitbox
 
@@ -296,7 +296,7 @@ const LIGHT_KINDS = ['normal', 'weaver', 'diver', 'orbiter'];
 function isBoss(u){ return u.kind === 'mid' || u.kind === 'big' || u.kind === 'super'; }
 function unitCol(u){ return isBoss(u) ? (u.kind === 'mid' ? '#fb923c' : '#f87171') : (KIND_COL[u.kind] || ROW_COL[u.row]); }
 function buildWave(){
-  units = []; balls = []; particles = []; rings = []; pops = [];
+  units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null;
   form = { fx: 0, fz: 0.02, dir: 1, speed: 0.05 + wave * 0.006 };
   shootT = 1.4;
   const occupied = new Set();
@@ -378,18 +378,23 @@ function pop(text, col, big, key){ if (key) pops = pops.filter(q => q.key !== ke
 
 // ---------- balls ----------
 function ballSpeed(){ return 0.52 + wave * 0.028; }
-function spawnEnemyBall(){
-  const alive = aliveUnits(); if (!alive.length) return;
+function pickShooter(){
+  const alive = aliveUnits(); if (!alive.length) return null;
   const bosses = alive.filter(u => u.kind === 'super' || u.kind === 'big');
   const shooters = alive.filter(u => u.row >= 2 || u.kind !== 'normal');
   const pool = (bosses.length && Math.random() < 0.4) ? bosses : (shooters.length ? shooters : alive);
-  const src = pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+let pendingShot = null; // { u, t } - the telegraph: this unit flashes before it fires
+function fireBallFrom(src){
+  if (!src || !src.alive) return;
   const p = unitPos(src);
   const S = ballSpeed();
   const ang = rand(0.35, 0.75) * (Math.random() < 0.5 ? -1 : 1); // diagonal so it pinballs off the walls
   balls.push({ x: p.x, z: p.z + 0.04, vx: Math.sin(ang) * S, vz: Math.cos(ang) * S, chain: 0, pierce: 0, backCombo: 0, hitSet: new Set(), returned: false, resolved: false, trail: [] });
   blasterSound();
 }
+function spawnEnemyBall(){ const u = pickShooter(); if (u) fireBallFrom(u); }
 function maxBalls(){ return Math.min(2 + Math.floor((wave - 1) / 2), 4); }
 
 function damage(){
@@ -443,6 +448,7 @@ function update(dt){
   if (player.swingT > 0) player.swingT -= dt;
   if (player.swingAnimT > 0) player.swingAnimT -= dt;
   if (player.swingCd > 0) player.swingCd -= dt;
+  if (player.swingBufferT > 0){ player.swingBufferT -= dt; if (player.swingCd <= 0 && player.swingBufferT > 0) executeSwing(); }
   if (player.hurtT > 0) player.hurtT -= dt;
   player.saberTrail = player.saberTrail.filter(s => (s.t += dt) < 0.5);
 
@@ -464,11 +470,17 @@ function update(dt){
     if (warnT <= 0){ warnT = 0.85; beep(196, 0.11, 'sawtooth', 0.045, -40); }
   } else warned = false;
 
-  // enemy fire (also during a rally)
+  // enemy fire (also during a rally): first a 0.45s telegraph, then the shot
   shootT -= dt;
-  if (shootT <= 0){
+  if (pendingShot){
+    pendingShot.t -= dt;
+    if (pendingShot.t <= 0){
+      const u = pendingShot.u; pendingShot = null;
+      if (balls.length < maxBalls() + 1) fireBallFrom(u.alive ? u : pickShooter());
+    }
+  } else if (shootT <= 0){
     shootT = rand(1.5, 2.6) * Math.max(0.5, 1 - (wave - 1) * 0.07);
-    if (balls.length < maxBalls()) spawnEnemyBall();
+    if (balls.length < maxBalls()){ const u = pickShooter(); if (u) pendingShot = { u, t: 0.45 }; }
   }
 
   // balls
@@ -697,6 +709,18 @@ function drawInvader(u){
     ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(pr.x - bw / 2, pr.y - bh / 2 - 8 * pr.scale, bw, 3.4);
     ctx.fillStyle = ratio > 0.4 ? '#facc15' : '#ef4444'; ctx.fillRect(pr.x - bw / 2, pr.y - bh / 2 - 8 * pr.scale, bw * ratio, 3.4);
   }
+  if (pendingShot && pendingShot.u === u){ // telegraph: charge glow + pulsing ring
+    const k = 1 - Math.max(0, pendingShot.t) / 0.45;
+    const cp = proj(p.x, p.z + p.dF / 2 + 0.03);
+    ctx.save();
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(time * 42);
+    ctx.strokeStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 12; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, wPx * (0.55 + 0.10 * Math.sin(time * 42)), 0, 6.283); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fecaca'; ctx.shadowBlur = 16;
+    ctx.beginPath(); ctx.arc(cp.x, cp.y, (2.5 + k * 5) * pr.scale, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
   ctx.restore();
 }
 function drawCharacter(){
@@ -856,10 +880,14 @@ function loop(now){
 // Left thumb: virtual analog stick (move). Right thumb: SWING button.
 // Two independent pointers, so moving and swinging work at the same time.
 // (The old one-finger drag / swipe-up controls were dropped: poor operability.)
-function doSwing(){
-  if (state !== 'playing' || player.swingCd > 0) return;
-  player.swingT = SWING_ACTIVE; player.swingAnimT = SWING_ANIM; player.swingCd = 0.42;
+function executeSwing(){
+  player.swingT = SWING_ACTIVE; player.swingAnimT = SWING_ANIM; player.swingCd = 0.42; player.swingBufferT = 0;
   swingSound();
+}
+function doSwing(){
+  if (state !== 'playing') return;
+  if (player.swingCd > 0){ player.swingBufferT = Math.min(player.swingCd + 0.06, 0.35); return; } // pressed during cooldown: queue it for the moment the saber is ready
+  executeSwing();
 }
 const stick = { x: 0, active: false, id: null };
 (function initStick(){
