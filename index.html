@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.5 - ルミナス・インベーダー崩し</title>
+<title>SABER BREAKER v2.6 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -28,6 +28,17 @@
   #bigBtn:active{transform:scale(.97)}
   #subBtn{margin-top:12px;background:transparent;border:none;color:#94a3b8;font-size:12px;text-decoration:underline}
   #foot{padding:6px 10px calc(8px + env(safe-area-inset-bottom));text-align:center;font-size:11px;color:#64748b;letter-spacing:.05em}
+  /* opening crawl (title screen): the rules scroll away into the stars */
+  #longAgo{display:none}
+  #overlay.title #longAgo{display:block;color:#4bd5ee;font-size:15px;letter-spacing:.03em;margin-bottom:8px;text-shadow:0 0 12px rgba(75,213,238,.55)}
+  #crawlWrap{display:none}
+  #overlay.title #crawlWrap{display:block;position:relative;width:min(86vw,330px);height:288px;overflow:hidden;perspective:230px;-webkit-mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent);mask-image:linear-gradient(180deg,transparent,#000 20%,#000 80%,transparent)}
+  #crawl{position:absolute;left:0;right:0;top:0;transform-origin:50% 100%;animation:crawlMove 40s linear infinite;color:#feda4a;font-weight:700;font-size:14.5px;line-height:1.8;text-align:justify;text-shadow:0 0 9px rgba(254,218,74,.30)}
+  #crawl p{margin-bottom:15px}
+  #crawl .cw-center{text-align:center}
+  #crawl .cw-big{font-size:21px;letter-spacing:.14em}
+  @keyframes crawlMove{0%{transform:rotateX(54deg) translateY(102%)}100%{transform:rotateX(54deg) translateY(-125%)}}
+  #overlay.title #ovH1,#overlay.title #ovP{display:none}
   /* Retro-Tennis-style touch controls: stick (left thumb) + swing button (right thumb), overlaid on the field */
   #touch{position:absolute;left:0;right:0;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end;padding:0 16px;z-index:4;pointer-events:none}
   #stick{pointer-events:auto;width:98px;height:98px;border-radius:50%;border:2px solid rgba(34,211,238,.55);background:radial-gradient(circle,rgba(34,211,238,.10),rgba(34,211,238,.03) 70%);position:relative;touch-action:none}
@@ -41,26 +52,36 @@
   <div id="hud">
     <div><span class="hud-label">SCORE</span><b id="score">0</b></div>
     <div style="text-align:center"><span class="hud-label">WAVE</span><b id="wave">1</b></div>
-    <div style="text-align:center"><span class="hud-label">MAX CHAIN</span><b id="chain">0</b></div>
+    <div style="text-align:center"><span class="hud-label">CHAIN</span><b id="chain">0</b></div>
     <div style="text-align:right"><span class="hud-label">LIFE</span><b id="lives">♥♥♥</b></div>
     <button id="pauseBtn">⏸</button>
   </div>
   <div id="game">
     <canvas id="cv"></canvas>
-    <div id="overlay">
-      <h1>SABER<br>BREAKER<br><span class="pink" style="font-size:17px">― ルミナス・インベーダー崩し ―</span></h1>
-      <p><b>左スティック</b>で移動、<b>右ボタン</b>でライトセイバーを振る！（レトロテニスと同じ操作）<br>
-      敵の弾は壁で反射しながら飛んでくる。跳ね返すたびにその弾の<b>チェーン</b>が貯まって強くなり、<b>1段階ごとに敵を1体貫通</b>するようになる。編隊に混ざった<b>中ボス・大ボス</b>も壊せるようになる。<br>
-      後ろに抜けた弾はセーフ、<b>体に当たるとダメージ</b>。編隊が最前線まで来たら終わりだ。</p>
-      <button id="bigBtn">▶ ゲームスタート</button>
-      <button id="subBtn">音 ON / OFF</button>
+    <div id="overlay" class="title">
+      <div id="longAgo">A long time ago in a galaxy far, far away....</div>
+      <div id="crawlWrap"><div id="crawl">
+        <p class="cw-center cw-big">SABER BREAKER</p>
+        <p class="cw-center">A LUMINOUS INVADER SAGA</p>
+        <p>The Empire's fleet is descending on the last free world. Wave after wave of fighters closes in — and one small Jedi stands in their way.</p>
+        <p>MOVE with the LEFT STICK. SWING your lightsaber with the RIGHT BUTTON.</p>
+        <p>Enemy bolts ricochet off the walls. Deflect them back! Every return builds that bolt's CHAIN — faster, stronger, and piercing one more enemy for every chain level.</p>
+        <p>Strike an enemy from the FRONT or the SIDE and the bolt pierces by chain, then returns to you. Strike one from BEHIND and the bolt REFLECTS — attack again and again from the rear, breaker-style.</p>
+        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage.</p>
+        <p>A bolt that slips past you is harmless. A bolt that hits your body costs one life. If the formation reaches the front line, all is lost.</p>
+        <p class="cw-center">MAY THE FORCE BE WITH YOU</p>
+      </div></div>
+      <h1 id="ovH1">SABER<br>BREAKER</h1>
+      <p id="ovP"></p>
+      <button id="bigBtn">▶ START GAME</button>
+      <button id="subBtn">SOUND ON / OFF</button>
     </div>
     <div id="touch">
       <div id="stick"><div id="stickKnob"></div></div>
-      <button id="btnSwing">⚔<br>振る</button>
+      <button id="btnSwing">⚔<br>SWING</button>
     </div>
   </div>
-  <div id="foot">左スティックで移動 ・ 右ボタンで振る ・ ⏸で一時停止</div>
+  <div id="foot">LEFT STICK: MOVE &nbsp;·&nbsp; RIGHT BUTTON: SWING &nbsp;·&nbsp; ⏸ PAUSE</div>
 </div>
 <script>
 "use strict";
@@ -132,49 +153,6 @@ function noiseSrc(c){
   if (!noiseBuf){ noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
   const src = c.createBufferSource(); src.buffer = noiseBuf; src.loop = true; return src;
 }
-// --- lightsaber hum: two detuned saws -> lowpass with a slow LFO wobble ---
-let hum = null;
-function humStart(){
-  if (hum) return;
-  const c = ac(); if (!c) return;
-  try{
-    const g = c.createGain(); g.gain.value = 0;
-    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420; f.Q.value = 2;
-    const o1 = c.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 78;
-    const o2 = c.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 78 * 1.007;
-    const og = c.createGain(); og.gain.value = 0.5;
-    const lfo = c.createOscillator(); lfo.frequency.value = 11;
-    const lg = c.createGain(); lg.gain.value = 130;
-    lfo.connect(lg); lg.connect(f.frequency);
-    o1.connect(og); o2.connect(og); og.connect(f); f.connect(g); g.connect(c.destination);
-    o1.start(); o2.start(); lfo.start();
-    g.gain.setTargetAtTime(muted ? 0 : 0.016, c.currentTime, 0.15);
-    hum = { o1, o2, g, f, lfo };
-  }catch(e){}
-}
-function humSet(on){ if (!hum || !AC) return; try{ hum.g.gain.setTargetAtTime(on && !muted ? 0.016 : 0, AC.currentTime, 0.08); }catch(e){} }
-function humStop(){
-  if (!hum) return; const h = hum; hum = null;
-  try{
-    h.g.gain.setTargetAtTime(0, AC.currentTime, 0.05);
-    setTimeout(() => { try{ h.o1.stop(); h.o2.stop(); h.lfo.stop(); }catch(e){} }, 350);
-  }catch(e){}
-}
-function humBend(up){ // swinging bends the hum's pitch/filter - the classic whoosh feel
-  if (!hum || !AC) return;
-  const c = AC, t = c.currentTime;
-  try{
-    [hum.o1, hum.o2].forEach((o, i) => {
-      const m = i ? 1.007 : 1;
-      o.frequency.cancelScheduledValues(t); o.frequency.setValueAtTime(o.frequency.value, t);
-      o.frequency.exponentialRampToValueAtTime((up ? 118 : 62) * m, t + 0.10);
-      o.frequency.exponentialRampToValueAtTime(78 * m, t + 0.34);
-    });
-    hum.f.frequency.cancelScheduledValues(t); hum.f.frequency.setValueAtTime(hum.f.frequency.value, t);
-    hum.f.frequency.linearRampToValueAtTime(up ? 900 : 300, t + 0.10);
-    hum.f.frequency.linearRampToValueAtTime(420, t + 0.36);
-  }catch(e){}
-}
 function saberIgnite(){ // power-on: snap-hiss + pitch rising into the hum
   const c = ac(); if (!c || muted) return;
   try{
@@ -202,8 +180,7 @@ function saberRetract(){ // power-off: the pitch falls away
     o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.36);
   }catch(e){}
 }
-function swingSound(){ // whoosh: hum bend + band-swept noise
-  humBend(Math.random() < 0.7);
+function swingSound(){ // whoosh: band-swept noise
   const c = ac(); if (!c || muted) return;
   try{
     const t = c.currentTime, n = noiseSrc(c);
@@ -264,18 +241,7 @@ function shieldPingSound(){ // metallic ping off the droideka shield
     });
   }catch(e){}
 }
-function hurtSound(){ // low thud + the hum sputters for a moment
-  beep(160, 0.25, 'sawtooth', 0.07, -110);
-  if (hum && AC){
-    try{
-      const t = AC.currentTime;
-      hum.g.gain.cancelScheduledValues(t); hum.g.gain.setValueAtTime(hum.g.gain.value, t);
-      hum.g.gain.linearRampToValueAtTime(0.002, t + 0.05);
-      hum.g.gain.linearRampToValueAtTime(muted ? 0 : 0.016, t + 0.5);
-      humBend(false);
-    }catch(e){}
-  }
-}
+function hurtSound(){ beep(160, 0.25, 'sawtooth', 0.07, -110); }
 
 // ---------- helpers ----------
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -299,6 +265,7 @@ const stars = []; for (let i = 0; i < 110; i++) stars.push({ x: Math.random() * 
 let state = 'title'; // title | playing | paused | over | waveclear
 let score = 0, hiScore = +(localStorage.getItem('saberBreakerHi') || 0), lives = 3, wave = 1;
 let time = 0, waveClearT = 0, shake = 0, maxChain = 0;
+let dangerLevel = 0, warnT = 0, warned = false, hitstop = 0;
 let balls = [], particles = [], rings = [], flashes = [], pops = [];
 let shootT = 1.6;
 
@@ -394,7 +361,6 @@ function resetGame(){ score = 0; lives = 3; wave = 1; maxChain = 0; buildWave();
 function updateHud(){
   document.getElementById('score').textContent = score;
   document.getElementById('wave').textContent = wave;
-  document.getElementById('chain').textContent = maxChain;
   document.getElementById('lives').textContent = '♥'.repeat(Math.max(0, lives)) || '―';
 }
 function addScore(n){ score += n; if (score > hiScore){ hiScore = score; localStorage.setItem('saberBreakerHi', hiScore); } updateHud(); }
@@ -426,18 +392,19 @@ function maxBalls(){ return Math.min(2 + Math.floor((wave - 1) / 2), 4); }
 
 function damage(){
   if (player.hurtT > 0) return;
-  lives--; updateHud(); player.hurtT = 1.4; shake = 0.35;
+  lives--; updateHud(); player.hurtT = 1.4; shake = 0.35; hitstop = Math.max(hitstop, 0.09);
   hurtSound();
   burstAt(player.x, PLAYER_Z, '#ef4444', 18, 1.2);
   flashes.push({ col: '#ef4444', t: 0 });
   if (lives <= 0) gameOver();
 }
 function gameOver(){
-  state = 'over'; humStop(); saberRetract();
+  state = 'over'; saberRetract();
   const ov = document.getElementById('overlay');
-  ov.querySelector('h1').innerHTML = '<span class="pink">GAME OVER</span>';
-  ov.querySelector('p').innerHTML = `帝国軍の侵攻を止められなかった…<br>SCORE <b>${score}</b> ／ WAVE <b>${wave}</b> ／ MAX CHAIN <b>${maxChain}</b>`;
-  document.getElementById('bigBtn').textContent = '↻ もう一度';
+  ov.classList.remove('title');
+  document.getElementById('ovH1').innerHTML = '<span class="pink">GAME OVER</span>';
+  document.getElementById('ovP').innerHTML = `THE FORMATION HAS LANDED.<br>THE GALAXY FALLS SILENT...<br><br>SCORE <b>${score}</b> / WAVE <b>${wave}</b> / MAX CHAIN <b>${maxChain}</b>`;
+  document.getElementById('bigBtn').textContent = '↻ RETRY';
   ov.classList.remove('hidden');
   beep(220, 0.5, 'sawtooth', 0.06, -160);
 }
@@ -452,6 +419,11 @@ function update(dt){
   flashes = flashes.filter(f => (f.t += dt) < 0.22);
   pops = pops.filter(p => (p.t += dt) < 0.9);
   if (state !== 'playing') return;
+
+  // HUD chain readout: the strongest chain among bolts currently in flight
+  const curChain = balls.reduce((m, b) => b.returned ? Math.max(m, b.chain) : m, 0);
+  const chainEl = document.getElementById('chain');
+  if (chainEl && String(chainEl.textContent) !== String(curChain)) chainEl.textContent = curChain;
 
   // player: left/right only, delta-time. Stick = analog velocity (Retro Tennis style).
   player.prevX = player.x;
@@ -474,7 +446,7 @@ function update(dt){
 
   // formation: sideways, step closer at each edge (invader style)
   const alive = aliveUnits();
-  if (!alive.length){ state = 'waveclear'; waveClearT = 1.6; addScore(200); pop('WAVE CLEAR!', '#38bdf8', true); beep(660, 0.12, 'square', 0.05, 440); return; }
+  if (!alive.length){ state = 'waveclear'; waveClearT = 1.6; addScore(200); pop('WAVE CLEAR!', '#38bdf8', true); beep(660, 0.12, 'square', 0.05, 440); for (let i = 0; i < 5; i++) burstAt(rand(-0.8, 0.8), rand(0.15, 0.6), ['#38bdf8', '#f472b6', '#facc15', '#4ade80', '#c084fc'][i], 16, 1.3); return; }
   const speedBoost = 1 + (units.length - alive.length) / units.length * 1.3;
   form.fx += form.dir * form.speed * speedBoost * dt;
   let minX = 1e9, maxX = -1e9, maxZ = -1e9;
@@ -482,6 +454,13 @@ function update(dt){
   if (minX < -0.97 && form.dir < 0){ form.dir = 1; form.fz += 0.028; }
   if (maxX > 0.97 && form.dir > 0){ form.dir = -1; form.fz += 0.028; }
   if (maxZ >= FRONTLINE_Z){ gameOver(); return; }
+  // invasion warning: ramps up as the formation nears the front line
+  dangerLevel = clamp((maxZ - (FRONTLINE_Z - 0.13)) / 0.13, 0, 1);
+  if (dangerLevel > 0.45){
+    if (!warned){ warned = true; pop('WARNING!', '#ef4444', true); }
+    warnT -= dt;
+    if (warnT <= 0){ warnT = 0.85; beep(196, 0.11, 'sawtooth', 0.045, -40); }
+  } else warned = false;
 
   // enemy fire (also during a rally)
   shootT -= dt;
@@ -528,20 +507,35 @@ function update(dt){
             u.alive = false; addScore(u.pts);
             burstAt(p.x, p.z, '#ffffff', 10, 1.2); shake = Math.max(shake, LIGHT_KINDS.includes(u.kind) ? 0.1 : 0.3);
             explodeSound(isBoss(u));
+            if (isBoss(u)){ hitstop = Math.max(hitstop, u.kind === 'super' ? 0.22 : 0.13); burstAt(p.x, p.z, '#ffffff', 26, 1.5); ringAt(p.x, p.z, '#facc15'); flashes.push({ col: '#facc15', t: 0 }); shake = Math.max(shake, u.kind === 'super' ? 0.45 : 0.35); }
             if (isBoss(u)) pop(u.kind === 'super' ? 'SUPER BOSS DOWN!' : u.kind === 'big' ? 'BIG BOSS DOWN!' : 'MID BOSS DOWN!', '#facc15', true);
           } else {
             beep(520, 0.07, 'square', 0.045, -160);
-            if (isBoss(u) || u.kind === 'shield') pop('HIT! 残り ' + u.hp, '#facc15', false);
+            if (isBoss(u) || u.kind === 'shield') pop('HIT! HP ' + u.hp, '#facc15', false);
           }
         }
-        // pierce: while the ball still has pierce left (1 per chain stage),
-        // it punches straight through a normal invader and keeps flying.
-        // Bosses are solid: they always stop the ball.
-        if (!shieldHit && LIGHT_KINDS.includes(u.kind) && b.pierce > 0){
+        // --- how the bolt leaves the enemy depends on where it struck ---
+        const destroyed = !u.alive;
+        const fromBack = b.vz > 0; // moving toward the player = it arrived from BEHIND the enemy
+        if (fromBack && destroyed){
+          // BACK ATTACK kill: smashed through from the rear, the bolt flies on
+          burstAt(b.x, b.z, '#facc15', 12, 1.1); pop('BACK ATTACK!', '#facc15', false);
+        } else if (fromBack){
+          // BACK ATTACK: breakout-style reflection off the rear. The bolt keeps
+          // its chain and power, so it can strike again and again from behind.
+          b.vz = -Math.abs(S) * 0.88; b.vx = clamp(b.vx + (b.x - p.x) * 2.4, -S * 0.85, S * 0.85);
+          const ns = Math.hypot(b.vx, b.vz); b.vx *= S / ns; b.vz *= S / ns;
+          b.z = p.z - p.dF / 2 - 0.03;
+          burstAt(b.x, b.z, '#facc15', 10, 1.0); ringAt(b.x, b.z, '#facc15');
+          pop('BACK ATTACK!', '#facc15', false);
+          beep(760, 0.06, 'square', 0.04, 180);
+        } else if (!shieldHit && LIGHT_KINDS.includes(u.kind) && b.pierce > 0){
+          // front/side hit: pierce while the bolt still has pierce left
+          // (1 per chain stage). Bosses are solid: they always stop the bolt.
           b.pierce--;
           burstAt(b.x, b.z, '#ffffff', 6, 0.8);
         } else {
-          // rally rule: after hitting one, the ball comes back to the player
+          // rally rule: after a front/side hit, the bolt comes back to the player
           b.vz = Math.abs(S) * 0.88; b.vx = clamp(b.vx + (b.x - p.x) * 1.4, -S * 0.8, S * 0.8);
           const ns = Math.hypot(b.vx, b.vz); b.vx *= S / ns; b.vz *= S / ns;
           b.z = p.z + p.dF / 2 + 0.03;
@@ -618,10 +612,15 @@ function drawField(){
   ctx.strokeStyle = '#f472b6'; ctx.shadowColor = '#f472b6';
   a = proj(1, 0); b = proj(1, 1); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   ctx.restore();
-  // front line (invasion limit)
+  // front line (invasion limit): pulses harder as the formation closes in
   const f1 = proj(-1, FRONTLINE_Z), f2 = proj(1, FRONTLINE_Z);
-  ctx.strokeStyle = 'rgba(239,68,68,.55)'; ctx.setLineDash([7, 6]); ctx.lineWidth = 1.6;
+  const dl = dangerLevel || 0;
+  const alpha = dl > 0 ? 0.45 + 0.5 * (0.5 + 0.5 * Math.sin(time * (4 + dl * 9))) : 0.55;
+  ctx.save();
+  if (dl > 0){ ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 14 * dl; }
+  ctx.strokeStyle = `rgba(239,68,68,${alpha})`; ctx.setLineDash([7, 6]); ctx.lineWidth = 1.6 + dl * 2.6;
   ctx.beginPath(); ctx.moveTo(f1.x, f1.y); ctx.lineTo(f2.x, f2.y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.restore();
 }
 function drawInvader(u){
   const p = unitPos(u), pr = proj(p.x, p.z);
@@ -775,7 +774,7 @@ function drawBall(b){
   const g = ctx.createRadialGradient(pr.x - 2, pr.y - 2, 0, pr.x, pr.y, r + 1);
   g.addColorStop(0, '#ffffff'); g.addColorStop(0.55, hexA(col, 0.95)); g.addColorStop(1, 'rgba(2,6,23,0.9)');
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pr.x, pr.y, r, 0, 6.283); ctx.fill(); ctx.restore();
-  if (b.chain >= 2){ ctx.fillStyle = col; ctx.font = `bold ${Math.round(11 * pr.scale + 3)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('×' + b.chain, pr.x, pr.y - r - 5); }
+  if (b.chain >= 1){ ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(12 * pr.scale + 4)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('×' + b.chain, pr.x, pr.y - r - 6); ctx.restore(); }
 }
 function draw(){
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -804,6 +803,14 @@ function draw(){
     ctx.translate(W / 2, H * 0.38); ctx.scale(1 + 0.25 * Math.sin(Math.min(1, k * 3) * Math.PI), 1 + 0.25 * Math.sin(Math.min(1, k * 3) * Math.PI));
     ctx.fillStyle = p.col; ctx.font = `bold ${sc}px sans-serif`; ctx.textAlign = 'center'; ctx.shadowColor = p.col; ctx.shadowBlur = 20;
     ctx.fillText(p.text, 0, 0); ctx.restore(); }
+  if (dangerLevel > 0 && state === 'playing'){
+    const va = dangerLevel * (0.10 + 0.05 * Math.sin(time * 6));
+    const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.30, W / 2, H / 2, H * 0.72);
+    vg.addColorStop(0, 'rgba(239,68,68,0)'); vg.addColorStop(1, `rgba(239,68,68,${va})`);
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    if (dangerLevel > 0.45){ ctx.fillStyle = '#f87171'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 12;
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 6); ctx.fillText('⚠ WARNING ⚠', W / 2, 26); ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
+  }
   if (state === 'waveclear'){ ctx.fillStyle = '#fff'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center'; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 22; ctx.fillText('WAVE CLEAR!', W / 2, H / 2); ctx.shadowBlur = 0; }
   if (state === 'paused'){ ctx.fillStyle = 'rgba(5,1,15,.6)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = 'bold 26px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('PAUSED', W / 2, H / 2); }
   ctx.restore();
@@ -814,6 +821,7 @@ let lastT = performance.now();
 function loop(now){
   let dt = (now - lastT) / 1000; lastT = now;
   dt = Math.min(dt, 0.05);
+  if (hitstop > 0){ hitstop -= dt; dt *= 0.12; } // hitstop: a frozen beat on big kills
   if (state === 'waveclear'){ waveClearT -= dt; particles = particles.filter(p => (p.t += dt) < p.life); pops = pops.filter(p => (p.t += dt) < 0.9);
     if (waveClearT <= 0){ wave++; buildWave(); updateHud(); state = 'playing'; } }
   else update(dt);
@@ -879,15 +887,17 @@ setInterval(() => { if (state !== 'playing') return;
 document.addEventListener('contextmenu', e => e.preventDefault());
 
 function togglePause(){
-  if (state === 'playing'){ state = 'paused'; humSet(false); }
-  else if (state === 'paused'){ state = 'playing'; lastT = performance.now(); humSet(true); }
+  if (state === 'playing') state = 'paused';
+  else if (state === 'paused'){ state = 'playing'; lastT = performance.now(); }
 }
 document.getElementById('pauseBtn').addEventListener('click', togglePause);
-document.getElementById('subBtn').addEventListener('click', () => { muted = !muted; document.getElementById('subBtn').textContent = muted ? '音 OFF 中（タップでON）' : '音 ON / OFF'; humSet(state === 'playing'); });
+document.getElementById('subBtn').addEventListener('click', () => { muted = !muted; document.getElementById('subBtn').textContent = muted ? 'SOUND: OFF (TAP FOR ON)' : 'SOUND ON / OFF'; });
 document.getElementById('bigBtn').addEventListener('click', () => {
-  saberIgnite(); humStart();
-  document.getElementById('overlay').querySelector('h1').innerHTML = 'SABER<br>BREAKER<br><span class="pink" style="font-size:17px">― ルミナス・インベーダー崩し ―</span>';
-  resetGame(); document.getElementById('overlay').classList.add('hidden');
+  saberIgnite();
+  const ov = document.getElementById('overlay');
+  ov.classList.add('title'); // the crawl returns next time the overlay shows
+  document.getElementById('bigBtn').textContent = '▶ START GAME';
+  resetGame(); ov.classList.add('hidden');
   state = 'playing'; lastT = performance.now();
 });
 
