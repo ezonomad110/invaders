@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.12 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v3.0 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -67,7 +67,7 @@
         <p>MOVE with the LEFT STICK. SWING your lightsaber with the RIGHT BUTTON.</p>
         <p>Enemy bolts ricochet off the walls. Deflect them back! Every return builds that bolt's CHAIN — faster, stronger, and piercing one more enemy for every chain level.</p>
         <p>Strike an enemy from the FRONT or the SIDE and the bolt pierces by chain, then returns to you. Strike one from BEHIND and the bolt REFLECTS — attack again and again from the rear, breaker-style.</p>
-        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage.</p>
+        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him.</p>
         <p>A bolt that slips past you is harmless. A bolt that hits your body costs one life. If the formation reaches the front line, all is lost.</p>
         <p class="cw-center">MAY THE FORCE BE WITH YOU</p>
       </div></div>
@@ -293,7 +293,7 @@ const SPRITES = [
 const KIND_SPRITE = { weaver: 4, diver: 5, orbiter: 6, shield: 7 };
 const KIND_COL = { weaver: '#e2e8f0', diver: '#fb923c', orbiter: '#c084fc', shield: '#94a3b8' };
 const LIGHT_KINDS = ['normal', 'weaver', 'diver', 'orbiter'];
-function isBoss(u){ return u.kind === 'mid' || u.kind === 'big' || u.kind === 'super'; }
+function isBoss(u){ return u.kind === 'mid' || u.kind === 'big' || u.kind === 'super' || u.kind === 'vader'; }
 function unitCol(u){ return isBoss(u) ? (u.kind === 'mid' ? '#fb923c' : '#f87171') : (KIND_COL[u.kind] || ROW_COL[u.row]); }
 function buildWave(){
   units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null;
@@ -312,7 +312,12 @@ function buildWave(){
   } else {
     // mid boss: centre column, rows 0..1 (tall)
     occupied.add(key(3, 0)); occupied.add(key(3, 1));
-    units.push({ kind: 'mid', col: 3, row: 0, rows: 2, wCells: 1, hp: 6 + wave, maxHp: 6 + wave, pts: 200, flashT: 0 });
+    if (wave >= 4 && wave % 3 === 1){
+      // THE DARK LORD: deflects weak bolts back at you (see collision rules)
+      units.push({ kind: 'vader', col: 3, row: 0, rows: 2, wCells: 1, hp: 12 + wave, maxHp: 12 + wave, pts: 800, flashT: 0, deflectT: 0 });
+    } else {
+      units.push({ kind: 'mid', col: 3, row: 0, rows: 2, wCells: 1, hp: 6 + wave, maxHp: 6 + wave, pts: 200, flashT: 0 });
+    }
     if (wave >= 4){ // side mid-bosses join in later waves
       occupied.add(key(0, 0)); occupied.add(key(6, 0));
       units.push({ kind: 'mid', col: 0, row: 0, rows: 1, wCells: 1, hp: 6 + wave, maxHp: 6 + wave, pts: 200, flashT: 0 });
@@ -337,9 +342,9 @@ function buildWave(){
   if (wave >= 3){ convert(2, 1, 'diver', 3, 40); convert(4, 1, 'diver', 3, 40); convert(0, 1, 'orbiter', 2, 40); convert(6, 1, 'orbiter', 2, 40); }
   if (wave >= 4){ convert(2, 3, 'shield', 2, 60, 3); convert(4, 3, 'shield', 2, 60, 3); }
   if (wave >= 5){ convert(3, 2, 'weaver', 1, 30); convert(0, 2, 'diver', 3, 40); convert(6, 2, 'diver', 3, 40); }
-  units.forEach(u => { u.alive = true; u.phase = (u.col * 1.73 + u.row * 2.39) % 6.283; if (u.shieldHp === undefined) u.shieldHp = 0; });
+  units.forEach(u => { u.alive = true; u.phase = (u.col * 1.73 + u.row * 2.39) % 6.283; if (u.shieldHp === undefined) u.shieldHp = 0; if (u.deflectT === undefined) u.deflectT = 0; });
 }
-const KIND_W = { normal: 0.19, weaver: 0.19, diver: 0.21, orbiter: 0.18, shield: 0.22, mid: 0.30, big: 0.62, super: 1.12 };
+const KIND_W = { normal: 0.19, weaver: 0.19, diver: 0.21, orbiter: 0.18, shield: 0.22, mid: 0.30, big: 0.62, super: 1.12, vader: 0.37 };
 function unitBasePos(u){
   const x = form.fx + (u.col - (COLS - 1) / 2) * COL_DX;
   const z = form.fz + u.row * ROW_DZ + (u.rows - 1) * ROW_DZ / 2;
@@ -380,7 +385,7 @@ function pop(text, col, big, key){ if (key) pops = pops.filter(q => q.key !== ke
 function ballSpeed(){ return 0.52 + wave * 0.028; }
 function pickShooter(){
   const alive = aliveUnits(); if (!alive.length) return null;
-  const bosses = alive.filter(u => u.kind === 'super' || u.kind === 'big');
+  const bosses = alive.filter(u => u.kind === 'super' || u.kind === 'big' || u.kind === 'vader');
   const shooters = alive.filter(u => u.row >= 2 || u.kind !== 'normal');
   const pool = (bosses.length && Math.random() < 0.4) ? bosses : (shooters.length ? shooters : alive);
   return pool[Math.floor(Math.random() * pool.length)];
@@ -458,7 +463,7 @@ function update(dt){
   const speedBoost = 1 + (units.length - alive.length) / units.length * 1.3;
   form.fx += form.dir * form.speed * speedBoost * dt;
   let minX = 1e9, maxX = -1e9, maxZ = -1e9;
-  alive.forEach(u => { const p = unitBasePos(u); minX = Math.min(minX, p.x - p.wF / 2); maxX = Math.max(maxX, p.x + p.wF / 2); maxZ = Math.max(maxZ, p.z + p.dF / 2); if (u.flashT > 0) u.flashT -= dt; });
+  alive.forEach(u => { const p = unitBasePos(u); minX = Math.min(minX, p.x - p.wF / 2); maxX = Math.max(maxX, p.x + p.wF / 2); maxZ = Math.max(maxZ, p.z + p.dF / 2); if (u.flashT > 0) u.flashT -= dt; if (u.deflectT > 0) u.deflectT -= dt; });
   if (minX < -0.97 && form.dir < 0){ form.dir = 1; form.fz += 0.028; }
   if (maxX > 0.97 && form.dir > 0){ form.dir = -1; form.fz += 0.028; }
   if (maxZ >= FRONTLINE_Z){ gameOver(); return; }
@@ -506,6 +511,22 @@ function update(dt){
           continue;
         }
         if (b.hitSet) b.hitSet.add(u);
+        const fromBackHit = b.vz > 0;
+        if (u.kind === 'vader' && !fromBackHit && ballPower(b.chain) < 3){
+          // DEFLECTED! The Dark Lord swats the bolt back at the player.
+          // Only a blazing chain (power 3+) - or a strike from behind - can touch him.
+          u.deflectT = 0.32; u.flashT = 0.10;
+          b.returned = false; b.chain = 0; b.pierce = 0; b.backCombo = 0;
+          if (b.hitSet) b.hitSet.clear();
+          const DS = ballSpeed();
+          b.vz = DS * 0.92; b.vx = rand(-0.3, 0.3) * DS;
+          const dn = Math.hypot(b.vx, b.vz); b.vx *= DS / dn; b.vz *= DS / dn;
+          b.z = p.z + p.dF / 2 + 0.03; b.resolved = false;
+          burstAt(p.x, p.z, '#ef4444', 14, 1.1); ringAt(p.x, p.z, '#ef4444');
+          pop('DEFLECTED!', '#ef4444', true, 'vader');
+          clashSound(2);
+          break;
+        }
         u.flashT = 0.14;
         const shieldHit = u.shieldHp > 0;
         if (shieldHit){
@@ -530,7 +551,7 @@ function update(dt){
         }
         // --- how the bolt leaves the enemy depends on where it struck ---
         const destroyed = !u.alive;
-        const fromBack = b.vz > 0; // moving toward the player = it arrived from BEHIND the enemy
+        const fromBack = fromBackHit; // moving toward the player = it arrived from BEHIND the enemy
         const backComboHit = () => { // consecutive back attacks with the same bolt build a combo
           b.backCombo = (b.backCombo || 0) + 1;
           if (b.backCombo >= 2){
@@ -646,10 +667,104 @@ function drawField(){
   ctx.beginPath(); ctx.moveTo(f1.x, f1.y); ctx.lineTo(f2.x, f2.y); ctx.stroke(); ctx.setLineDash([]);
   ctx.restore();
 }
+
+function drawVader(u, p, pr){
+  // Neon-vector Dark Lord. NOT flat black: layered gloss, a red rim light on one
+  // side and an ice-blue counter-rim on the other, over a dark-red backlit aura,
+  // so the silhouette lifts off the starfield instead of crushing into it.
+  const wPx = p.wF * pr.half, k = wPx / 150;
+  const bob = Math.sin(time * 1.25 + (u.phase || 0)) * 2.2 * pr.scale;
+  const cx = pr.x, cy = pr.y + bob;
+  const flash = u.flashT > 0;
+  ctx.save();
+  // backlit aura
+  const ag = ctx.createRadialGradient(cx, cy, 4, cx, cy, 150 * k);
+  ag.addColorStop(0, 'rgba(190,30,45,0.30)'); ag.addColorStop(0.6, 'rgba(120,20,60,0.13)'); ag.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(cx, cy, 150 * k, 0, 6.283); ctx.fill();
+  // ground ring
+  ctx.strokeStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 10; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.ellipse(cx, cy + 122 * k, wPx * 0.55, 7 * pr.scale, 0, 0, 6.283); ctx.stroke(); ctx.shadowBlur = 0;
+  ctx.translate(cx, cy); ctx.scale(k, k);
+  const capePath = () => { ctx.beginPath(); ctx.moveTo(-72, 122); ctx.lineTo(-54, -34); ctx.quadraticCurveTo(0, -56, 54, -34); ctx.lineTo(72, 122); ctx.quadraticCurveTo(0, 106, -72, 122); ctx.closePath(); };
+  const helmPath = () => { ctx.beginPath(); ctx.moveTo(-64, -30); ctx.bezierCurveTo(-60, -96, -34, -122, 0, -122); ctx.bezierCurveTo(34, -122, 60, -96, 64, -30); ctx.lineTo(52, -16); ctx.bezierCurveTo(28, -24, -28, -24, -52, -16); ctx.closePath(); };
+  // cape with a blue-grey sheen so the edges stay readable
+  const cg = ctx.createLinearGradient(-72, 0, 72, 0);
+  cg.addColorStop(0, '#232a42'); cg.addColorStop(0.18, '#0d0f1a'); cg.addColorStop(0.5, '#07080f'); cg.addColorStop(0.82, '#131020'); cg.addColorStop(1, '#3a1424');
+  capePath(); ctx.fillStyle = flash ? '#dfe3ee' : cg; ctx.fill();
+  ctx.strokeStyle = 'rgba(147,197,253,.28)'; ctx.lineWidth = 1.4; ctx.stroke();
+  // torso + chest panel
+  const tg = ctx.createLinearGradient(0, 30, 0, 120);
+  tg.addColorStop(0, '#1a1f31'); tg.addColorStop(1, '#080a12');
+  ctx.fillStyle = flash ? '#dfe3ee' : tg; ctx.fillRect(-38, 30, 76, 90);
+  ctx.fillStyle = '#141926'; ctx.strokeStyle = '#3b4560'; ctx.lineWidth = 1.4;
+  ctx.fillRect(-17, 42, 34, 24); ctx.strokeRect(-17, 42, 34, 24);
+  ['#ef4444', '#22c55e', '#38bdf8'].forEach((c, i) => { ctx.fillStyle = c; ctx.shadowColor = c; ctx.shadowBlur = 6; ctx.fillRect(-12 + i * 9, 48, 5.5, 5.5); });
+  ctx.shadowBlur = 0; ctx.fillStyle = '#9aa3b2';
+  for (let i = 0; i < 3; i++) ctx.fillRect(-9 + i * 8, 58, 3.4, 3.4);
+  ctx.fillStyle = '#232a3e'; ctx.fillRect(-31, 96, 62, 8);
+  ctx.fillStyle = '#8b93a7'; ctx.fillRect(-6, 97.5, 12, 5);
+  // helmet: glossy dome, bright specular streaks
+  const hg = ctx.createLinearGradient(0, -128, 0, -16);
+  hg.addColorStop(0, '#3d4767'); hg.addColorStop(0.4, '#171c2e'); hg.addColorStop(1, '#090b13');
+  helmPath(); ctx.fillStyle = flash ? '#eef1f8' : hg; ctx.fill();
+  ctx.save(); ctx.strokeStyle = 'rgba(248,113,113,.85)'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 13; ctx.lineWidth = 1.8; ctx.stroke(); ctx.restore();
+  // ice-blue counter-rim along the left dome edge
+  ctx.save(); ctx.strokeStyle = 'rgba(147,197,253,.55)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, -70, 47, Math.PI * 0.98, Math.PI * 1.22); ctx.stroke(); ctx.restore();
+  // specular gloss streaks
+  ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 3.4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, -72, 44, Math.PI * 1.24, Math.PI * 1.5); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.arc(0, -72, 38, Math.PI * 1.3, Math.PI * 1.46); ctx.stroke(); ctx.restore();
+  ctx.strokeStyle = '#46536f'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, -120); ctx.lineTo(0, -86); ctx.stroke();
+  // eyes
+  ctx.save(); ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 16;
+  ctx.globalAlpha = 0.85 + 0.15 * Math.sin(time * 8.2);
+  ctx.beginPath(); ctx.moveTo(-40, -72); ctx.lineTo(-14, -76); ctx.lineTo(-17, -64); ctx.lineTo(-36, -62); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(40, -72); ctx.lineTo(14, -76); ctx.lineTo(17, -64); ctx.lineTo(36, -62); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // nose + mouth grill
+  ctx.beginPath(); ctx.moveTo(0, -70); ctx.lineTo(-7, -50); ctx.lineTo(7, -50); ctx.closePath();
+  ctx.fillStyle = '#0d0f18'; ctx.fill(); ctx.strokeStyle = '#46536f'; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-21, -46); ctx.lineTo(21, -46); ctx.lineTo(13, -18); ctx.lineTo(-13, -18); ctx.closePath();
+  ctx.fillStyle = '#0b0d15'; ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#a7b0c0'; ctx.lineWidth = 2.2;
+  for (const gx of [-11, -4, 3, 10]){ ctx.beginPath(); ctx.moveTo(gx, -42); ctx.lineTo(gx * 0.82, -22); ctx.stroke(); }
+  // lightsaber: held low at rest, slashed across the body while deflecting
+  const saberBlade = (x1, y1, x2, y2) => {
+    ctx.save(); ctx.lineCap = 'round';
+    const fl = 0.85 + 0.15 * Math.sin(time * 31);
+    ctx.strokeStyle = 'rgba(239,68,68,.30)'; ctx.lineWidth = 11; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 20;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 5.5; ctx.shadowBlur = 14; ctx.globalAlpha = fl;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = '#ffe4e6'; ctx.lineWidth = 2; ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = '#111827'; ctx.lineWidth = 6.5;
+    ctx.beginPath(); ctx.moveTo(x1 + (x1 - x2) * 0.12, y1 + (y1 - y2) * 0.12); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.restore();
+  };
+  if (u.deflectT > 0){
+    saberBlade(64, 30, -52, -66);
+    ctx.save(); ctx.strokeStyle = 'rgba(254,202,202,.75)'; ctx.lineWidth = 2.4; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(0, -10, 88, Math.PI * 1.08, Math.PI * 1.5); ctx.stroke(); ctx.restore();
+  } else {
+    saberBlade(64, 64, 102, -34);
+  }
+  ctx.restore();
+  // HP bar above the helmet
+  const bw2 = wPx * 1.15, bx = pr.x - bw2 / 2, by = cy - 138 * k;
+  const ratio = Math.max(0, u.hp / u.maxHp);
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(bx, by, bw2, 3.6);
+  ctx.fillStyle = ratio > 0.4 ? '#facc15' : '#ef4444'; ctx.fillRect(bx, by, bw2 * ratio, 3.6);
+}
+
 function drawInvader(u){
   const p = unitPos(u), pr = proj(p.x, p.z);
   const wPx = p.wF * pr.half, hPx = wPx * 0.78;
   const col = unitCol(u);
+  if (u.kind === 'vader'){ drawVader(u, p, pr); return; }
   ctx.save();
   if (!isBoss(u)){
     const spr = SPRITES[KIND_SPRITE[u.kind] !== undefined ? KIND_SPRITE[u.kind] : u.row], cell = wPx / spr[0].length;
