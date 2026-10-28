@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.4 - ルミナス・インベーダー崩し</title>
+<title>SABER BREAKER v2.5 - ルミナス・インベーダー崩し</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -108,19 +108,174 @@ const PLAYER_Z = 0.93, FRONTLINE_Z = 0.80, WALL_X = 1.0;
 
 // ---------- audio ----------
 let AC = null, muted = false;
-function beep(f, d = 0.07, type = 'square', v = 0.05, slide = 0){
-  if (muted) return;
+function ac(){ // shared context, created lazily (needs a user gesture first)
   try{
     if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
     if (AC.state === 'suspended') AC.resume();
-    const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+    return AC;
+  }catch(e){ return null; }
+}
+function beep(f, d = 0.07, type = 'square', v = 0.05, slide = 0){
+  if (muted) return;
+  const c = ac(); if (!c) return;
+  try{
+    const o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
     o.type = type; o.frequency.setValueAtTime(f, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t + d);
     g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + d);
   }catch(e){}
 }
-function swingSound(){ beep(180, 0.16, 'sawtooth', 0.035, 720); } // saber whoosh
+// shared 1s white-noise buffer for whooshes and explosions
+let noiseBuf = null;
+function noiseSrc(c){
+  if (!noiseBuf){ noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const src = c.createBufferSource(); src.buffer = noiseBuf; src.loop = true; return src;
+}
+// --- lightsaber hum: two detuned saws -> lowpass with a slow LFO wobble ---
+let hum = null;
+function humStart(){
+  if (hum) return;
+  const c = ac(); if (!c) return;
+  try{
+    const g = c.createGain(); g.gain.value = 0;
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420; f.Q.value = 2;
+    const o1 = c.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 78;
+    const o2 = c.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 78 * 1.007;
+    const og = c.createGain(); og.gain.value = 0.5;
+    const lfo = c.createOscillator(); lfo.frequency.value = 11;
+    const lg = c.createGain(); lg.gain.value = 130;
+    lfo.connect(lg); lg.connect(f.frequency);
+    o1.connect(og); o2.connect(og); og.connect(f); f.connect(g); g.connect(c.destination);
+    o1.start(); o2.start(); lfo.start();
+    g.gain.setTargetAtTime(muted ? 0 : 0.016, c.currentTime, 0.15);
+    hum = { o1, o2, g, f, lfo };
+  }catch(e){}
+}
+function humSet(on){ if (!hum || !AC) return; try{ hum.g.gain.setTargetAtTime(on && !muted ? 0.016 : 0, AC.currentTime, 0.08); }catch(e){} }
+function humStop(){
+  if (!hum) return; const h = hum; hum = null;
+  try{
+    h.g.gain.setTargetAtTime(0, AC.currentTime, 0.05);
+    setTimeout(() => { try{ h.o1.stop(); h.o2.stop(); h.lfo.stop(); }catch(e){} }, 350);
+  }catch(e){}
+}
+function humBend(up){ // swinging bends the hum's pitch/filter - the classic whoosh feel
+  if (!hum || !AC) return;
+  const c = AC, t = c.currentTime;
+  try{
+    [hum.o1, hum.o2].forEach((o, i) => {
+      const m = i ? 1.007 : 1;
+      o.frequency.cancelScheduledValues(t); o.frequency.setValueAtTime(o.frequency.value, t);
+      o.frequency.exponentialRampToValueAtTime((up ? 118 : 62) * m, t + 0.10);
+      o.frequency.exponentialRampToValueAtTime(78 * m, t + 0.34);
+    });
+    hum.f.frequency.cancelScheduledValues(t); hum.f.frequency.setValueAtTime(hum.f.frequency.value, t);
+    hum.f.frequency.linearRampToValueAtTime(up ? 900 : 300, t + 0.10);
+    hum.f.frequency.linearRampToValueAtTime(420, t + 0.36);
+  }catch(e){}
+}
+function saberIgnite(){ // power-on: snap-hiss + pitch rising into the hum
+  const c = ac(); if (!c || muted) return;
+  try{
+    const t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(38, t); o.frequency.exponentialRampToValueAtTime(160, t + 0.28);
+    const f = c.createBiquadFilter(); f.type = 'lowpass';
+    f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.3);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.45);
+    const n = noiseSrc(c); const nf = c.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 2500;
+    const ng = c.createGain(); ng.gain.setValueAtTime(0.05, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    n.connect(nf); nf.connect(ng); ng.connect(c.destination); n.start(t); n.stop(t + 0.2);
+  }catch(e){}
+}
+function saberRetract(){ // power-off: the pitch falls away
+  const c = ac(); if (!c || muted) return;
+  try{
+    const t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(170, t); o.frequency.exponentialRampToValueAtTime(36, t + 0.3);
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800;
+    const g = c.createGain(); g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.36);
+  }catch(e){}
+}
+function swingSound(){ // whoosh: hum bend + band-swept noise
+  humBend(Math.random() < 0.7);
+  const c = ac(); if (!c || muted) return;
+  try{
+    const t = c.currentTime, n = noiseSrc(c);
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.1;
+    f.frequency.setValueAtTime(500, t); f.frequency.exponentialRampToValueAtTime(2100, t + 0.13); f.frequency.exponentialRampToValueAtTime(420, t + 0.34);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.11, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.36);
+    n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + 0.4);
+  }catch(e){}
+}
+function clashSound(chain){ // a bolt meets the blade: zap + metallic ring, brighter as the chain grows
+  const c = ac(); if (!c || muted) return;
+  try{
+    const t = c.currentTime, base = 540 + Math.min(chain, 10) * 45;
+    const o = c.createOscillator(); o.type = 'square';
+    o.frequency.setValueAtTime(base * 1.9, t); o.frequency.exponentialRampToValueAtTime(base * 0.55, t + 0.12);
+    const g = c.createGain(); g.gain.setValueAtTime(0.065, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.17);
+    [2.76, 4.12].forEach((m, i) => {
+      const so = c.createOscillator(); so.type = 'sine'; so.frequency.value = base * m;
+      const sg = c.createGain(); sg.gain.setValueAtTime(0.028 - i * 0.008, t); sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.22 - i * 0.05);
+      so.connect(sg); sg.connect(c.destination); so.start(t); so.stop(t + 0.24);
+    });
+  }catch(e){}
+}
+function explodeSound(big){ // noise burst through a falling lowpass + a sub thump
+  const c = ac(); if (!c || muted) return;
+  try{
+    const t = c.currentTime, n = noiseSrc(c), dur = big ? 0.55 : 0.32;
+    const f = c.createBiquadFilter(); f.type = 'lowpass';
+    f.frequency.setValueAtTime(big ? 2600 : 1800, t); f.frequency.exponentialRampToValueAtTime(120, t + dur);
+    const g = c.createGain(); g.gain.setValueAtTime(big ? 0.22 : 0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.03);
+    n.connect(f); f.connect(g); g.connect(c.destination); n.start(t); n.stop(t + dur + 0.05);
+    const o = c.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(big ? 120 : 150, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.3);
+    const og = c.createGain(); og.gain.setValueAtTime(big ? 0.16 : 0.08, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    o.connect(og); og.connect(c.destination); o.start(t); o.stop(t + 0.34);
+  }catch(e){}
+}
+function blasterSound(){ // enemy pew: a fast falling zap, kept quiet
+  const c = ac(); if (!c || muted) return;
+  try{
+    const t = c.currentTime, o = c.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(1500 + Math.random() * 300, t); o.frequency.exponentialRampToValueAtTime(210, t + 0.11);
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 3200;
+    const g = c.createGain(); g.gain.setValueAtTime(0.028, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.13);
+  }catch(e){}
+}
+function shieldPingSound(){ // metallic ping off the droideka shield
+  const c = ac(); if (!c || muted) return;
+  try{
+    const t = c.currentTime;
+    [1560, 2340].forEach((fq, i) => {
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = fq;
+      const g = c.createGain(); g.gain.setValueAtTime(0.05 - i * 0.018, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.21);
+    });
+  }catch(e){}
+}
+function hurtSound(){ // low thud + the hum sputters for a moment
+  beep(160, 0.25, 'sawtooth', 0.07, -110);
+  if (hum && AC){
+    try{
+      const t = AC.currentTime;
+      hum.g.gain.cancelScheduledValues(t); hum.g.gain.setValueAtTime(hum.g.gain.value, t);
+      hum.g.gain.linearRampToValueAtTime(0.002, t + 0.05);
+      hum.g.gain.linearRampToValueAtTime(muted ? 0 : 0.016, t + 0.5);
+      humBend(false);
+    }catch(e){}
+  }
+}
 
 // ---------- helpers ----------
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -265,20 +420,20 @@ function spawnEnemyBall(){
   const S = ballSpeed();
   const ang = rand(0.35, 0.75) * (Math.random() < 0.5 ? -1 : 1); // diagonal so it pinballs off the walls
   balls.push({ x: p.x, z: p.z + 0.04, vx: Math.sin(ang) * S, vz: Math.cos(ang) * S, chain: 0, pierce: 0, hitSet: new Set(), returned: false, resolved: false, trail: [] });
-  beep(880, 0.07, 'square', 0.02, -420);
+  blasterSound();
 }
 function maxBalls(){ return Math.min(2 + Math.floor((wave - 1) / 2), 4); }
 
 function damage(){
   if (player.hurtT > 0) return;
   lives--; updateHud(); player.hurtT = 1.4; shake = 0.35;
-  beep(160, 0.25, 'sawtooth', 0.07, -110);
+  hurtSound();
   burstAt(player.x, PLAYER_Z, '#ef4444', 18, 1.2);
   flashes.push({ col: '#ef4444', t: 0 });
   if (lives <= 0) gameOver();
 }
 function gameOver(){
-  state = 'over';
+  state = 'over'; humStop(); saberRetract();
   const ov = document.getElementById('overlay');
   ov.querySelector('h1').innerHTML = '<span class="pink">GAME OVER</span>';
   ov.querySelector('p').innerHTML = `帝国軍の侵攻を止められなかった…<br>SCORE <b>${score}</b> ／ WAVE <b>${wave}</b> ／ MAX CHAIN <b>${maxChain}</b>`;
@@ -363,7 +518,7 @@ function update(dt){
         if (shieldHit){
           u.shieldHp -= dmg;
           burstAt(p.x, p.z, '#67e8f9', 14, 1.0); ringAt(p.x, p.z, '#67e8f9');
-          beep(980, 0.06, 'square', 0.04, -200);
+          shieldPingSound();
           pop(u.shieldHp > 0 ? 'SHIELD ' + u.shieldHp : 'SHIELD BREAK!', '#67e8f9', u.shieldHp <= 0);
         } else {
           u.hp -= dmg;
@@ -372,7 +527,7 @@ function update(dt){
           if (u.hp <= 0){
             u.alive = false; addScore(u.pts);
             burstAt(p.x, p.z, '#ffffff', 10, 1.2); shake = Math.max(shake, LIGHT_KINDS.includes(u.kind) ? 0.1 : 0.3);
-            beep(LIGHT_KINDS.includes(u.kind) ? 200 : 120, 0.18, 'square', 0.06, -120);
+            explodeSound(isBoss(u));
             if (isBoss(u)) pop(u.kind === 'super' ? 'SUPER BOSS DOWN!' : u.kind === 'big' ? 'BIG BOSS DOWN!' : 'MID BOSS DOWN!', '#facc15', true);
           } else {
             beep(520, 0.07, 'square', 0.045, -160);
@@ -418,7 +573,7 @@ function update(dt){
         burstAt(b.x, PLAYER_Z, chainColor(b.chain), 12, 1.1); ringAt(b.x, PLAYER_Z, chainColor(b.chain));
         flashes.push({ col: chainColor(b.chain), t: 0 });
         if (b.chain >= 2) pop(b.chain + ' CHAIN!', chainColor(b.chain), b.chain >= 4);
-        beep(660 + b.chain * 60, 0.08, 'square', 0.05, 220);
+        clashSound(b.chain);
       }
     }
     // past the saber zone unreturned: body hit or slip past (safe)
@@ -724,13 +879,13 @@ setInterval(() => { if (state !== 'playing') return;
 document.addEventListener('contextmenu', e => e.preventDefault());
 
 function togglePause(){
-  if (state === 'playing') state = 'paused';
-  else if (state === 'paused'){ state = 'playing'; lastT = performance.now(); }
+  if (state === 'playing'){ state = 'paused'; humSet(false); }
+  else if (state === 'paused'){ state = 'playing'; lastT = performance.now(); humSet(true); }
 }
 document.getElementById('pauseBtn').addEventListener('click', togglePause);
-document.getElementById('subBtn').addEventListener('click', () => { muted = !muted; document.getElementById('subBtn').textContent = muted ? '音 OFF 中（タップでON）' : '音 ON / OFF'; });
+document.getElementById('subBtn').addEventListener('click', () => { muted = !muted; document.getElementById('subBtn').textContent = muted ? '音 OFF 中（タップでON）' : '音 ON / OFF'; humSet(state === 'playing'); });
 document.getElementById('bigBtn').addEventListener('click', () => {
-  beep(440, 0.08, 'square', 0.05, 220);
+  saberIgnite(); humStart();
   document.getElementById('overlay').querySelector('h1').innerHTML = 'SABER<br>BREAKER<br><span class="pink" style="font-size:17px">― ルミナス・インベーダー崩し ―</span>';
   resetGame(); document.getElementById('overlay').classList.add('hidden');
   state = 'playing'; lastT = performance.now();
