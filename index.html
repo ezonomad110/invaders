@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.8 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v2.9 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -448,7 +448,7 @@ function update(dt){
 
   // formation: sideways, step closer at each edge (invader style)
   const alive = aliveUnits();
-  if (!alive.length){ state = 'waveclear'; waveClearT = 1.6; addScore(200); pop('WAVE CLEAR!', '#38bdf8', true); beep(660, 0.12, 'square', 0.05, 440); for (let i = 0; i < 5; i++) burstAt(rand(-0.8, 0.8), rand(0.15, 0.6), ['#38bdf8', '#f472b6', '#facc15', '#4ade80', '#c084fc'][i], 16, 1.3); return; }
+  if (!alive.length){ state = 'waveclear'; waveClearT = 1.6; addScore(200); pop('EPISODE ' + wave + ' COMPLETE', '#feda4a', true); beep(660, 0.12, 'square', 0.05, 440); for (let i = 0; i < 5; i++) burstAt(rand(-0.8, 0.8), rand(0.15, 0.6), ['#38bdf8', '#f472b6', '#facc15', '#4ade80', '#c084fc'][i], 16, 1.3); return; }
   const speedBoost = 1 + (units.length - alive.length) / units.length * 1.3;
   form.fx += form.dir * form.speed * speedBoost * dt;
   let minX = 1e9, maxX = -1e9, maxZ = -1e9;
@@ -832,7 +832,9 @@ function draw(){
     if (dangerLevel > 0.45){ ctx.fillStyle = '#f87171'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 12;
       ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 6); ctx.fillText('⚠ WARNING ⚠', W / 2, 26); ctx.globalAlpha = 1; ctx.shadowBlur = 0; }
   }
-  if (state === 'waveclear'){ ctx.fillStyle = '#fff'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center'; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 22; ctx.fillText('WAVE CLEAR!', W / 2, H / 2); ctx.shadowBlur = 0; }
+  if (state === 'waveclear'){ ctx.textAlign = 'center'; ctx.shadowColor = '#feda4a'; ctx.shadowBlur = 22;
+    ctx.fillStyle = '#feda4a'; ctx.font = 'bold 32px sans-serif'; ctx.fillText('EPISODE ' + wave, W / 2, H / 2 - 8);
+    ctx.font = 'bold 19px sans-serif'; ctx.fillText('C O M P L E T E', W / 2, H / 2 + 24); ctx.shadowBlur = 0; }
   if (state === 'paused'){ ctx.fillStyle = 'rgba(5,1,15,.6)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = 'bold 26px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('PAUSED', W / 2, H / 2); }
   ctx.restore();
 }
