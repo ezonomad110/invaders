@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v2.9 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v2.10 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -374,7 +374,7 @@ function burstAt(x, z, col, n = 12, sp = 1){
     particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: rand(.3, .7), t: 0, col, size: rand(1.5, 3.4) }); }
 }
 function ringAt(x, z, col){ const p = proj(x, z); rings.push({ x: p.x, y: p.y, r: 6, t: 0, col }); }
-function pop(text, col, big){ pops.push({ text, col, t: 0, big: !!big }); }
+function pop(text, col, big, key){ if (key) pops = pops.filter(q => q.key !== key); pops.push({ text, col, t: 0, big: !!big, key: key || null }); }
 
 // ---------- balls ----------
 function ballSpeed(){ return 0.52 + wave * 0.028; }
@@ -459,7 +459,7 @@ function update(dt){
   // invasion warning: ramps up as the formation nears the front line
   dangerLevel = clamp((maxZ - (FRONTLINE_Z - 0.13)) / 0.13, 0, 1);
   if (dangerLevel > 0.45){
-    if (!warned){ warned = true; pop('WARNING!', '#ef4444', true); }
+    if (!warned){ warned = true; pop('WARNING!', '#ef4444', true, 'warn'); }
     warnT -= dt;
     if (warnT <= 0){ warnT = 0.85; beep(196, 0.11, 'sawtooth', 0.045, -40); }
   } else warned = false;
@@ -500,7 +500,7 @@ function update(dt){
           u.shieldHp -= dmg;
           burstAt(p.x, p.z, '#67e8f9', 14, 1.0); ringAt(p.x, p.z, '#67e8f9');
           shieldPingSound();
-          pop(u.shieldHp > 0 ? 'SHIELD ' + u.shieldHp : 'SHIELD BREAK!', '#67e8f9', u.shieldHp <= 0);
+          pop(u.shieldHp > 0 ? 'SHIELD ' + u.shieldHp : 'SHIELD BREAK!', '#67e8f9', u.shieldHp <= 0, 'hit');
         } else {
           u.hp -= dmg;
           burstAt(p.x, p.z, unitCol(u), LIGHT_KINDS.includes(u.kind) ? 14 : 22, 1.1);
@@ -510,10 +510,10 @@ function update(dt){
             burstAt(p.x, p.z, '#ffffff', 10, 1.2); shake = Math.max(shake, LIGHT_KINDS.includes(u.kind) ? 0.1 : 0.3);
             explodeSound(isBoss(u));
             if (isBoss(u)){ hitstop = Math.max(hitstop, u.kind === 'super' ? 0.22 : 0.13); burstAt(p.x, p.z, '#ffffff', 26, 1.5); ringAt(p.x, p.z, '#facc15'); flashes.push({ col: '#facc15', t: 0 }); shake = Math.max(shake, u.kind === 'super' ? 0.45 : 0.35); }
-            if (isBoss(u)) pop(u.kind === 'super' ? 'SUPER BOSS DOWN!' : u.kind === 'big' ? 'BIG BOSS DOWN!' : 'MID BOSS DOWN!', '#facc15', true);
+            if (isBoss(u)) pop(u.kind === 'super' ? 'SUPER BOSS DOWN!' : u.kind === 'big' ? 'BIG BOSS DOWN!' : 'MID BOSS DOWN!', '#facc15', true, 'boss');
           } else {
             beep(520, 0.07, 'square', 0.045, -160);
-            if (isBoss(u) || u.kind === 'shield' || u.maxHp >= 3) pop('HIT! HP ' + u.hp, '#facc15', false);
+            if (isBoss(u) || u.kind === 'shield' || u.maxHp >= 3) pop('HIT! HP ' + u.hp, '#facc15', false, 'hit');
           }
         }
         // --- how the bolt leaves the enemy depends on where it struck ---
@@ -523,10 +523,10 @@ function update(dt){
           b.backCombo = (b.backCombo || 0) + 1;
           if (b.backCombo >= 2){
             const n = b.backCombo, col = n >= 12 ? '#f472b6' : n >= 8 ? '#fb923c' : '#facc15';
-            pop('BACK ATTACK COMBO x' + n, col, n >= 4);
+            pop('BACK ATTACK COMBO x' + n, col, n >= 4, 'back');
             beep(680 + Math.min(n, 14) * 45, 0.07, 'square', 0.05, 160);
             if (n >= 5) flashes.push({ col, t: 0 });
-          } else pop('BACK ATTACK!', '#facc15', false);
+          } else pop('BACK ATTACK!', '#facc15', false, 'back');
         };
         if (fromBack && destroyed){
           // BACK ATTACK kill: smashed through from the rear, the bolt flies on
@@ -578,7 +578,7 @@ function update(dt){
         b.z = PLAYER_Z - 0.05;
         burstAt(b.x, PLAYER_Z, chainColor(b.chain), 12, 1.1); ringAt(b.x, PLAYER_Z, chainColor(b.chain));
         flashes.push({ col: chainColor(b.chain), t: 0 });
-        if (b.chain >= 2) pop(b.chain + ' CHAIN!', chainColor(b.chain), b.chain >= 4);
+        if (b.chain >= 2) pop(b.chain + ' CHAIN!', chainColor(b.chain), b.chain >= 4, 'chain');
         clashSound(b.chain);
       }
     }
@@ -588,7 +588,7 @@ function update(dt){
       if (Math.abs(dxp) < 0.105){
         // direct body hit
         b.z = 99; // remove below
-        if (b.chain >= 3) pop('CHAIN BREAK', '#ef4444', true);
+        if (b.chain >= 3) pop('CHAIN BREAK', '#ef4444', true, 'chain');
         damage(); if (state !== 'playing') return;
       }
       // otherwise: it slips past -> safe, removed when z > 1.05
@@ -597,7 +597,7 @@ function update(dt){
   // remove spent balls
   balls = balls.filter(b => {
     if (b.z > 1.05){
-      if (b.chain >= 3) pop('CHAIN BREAK', '#f87171', false);
+      if (b.chain >= 3) pop('CHAIN BREAK', '#f87171', false, 'chain');
       return false;
     }
     return b.z < 90;
@@ -819,9 +819,9 @@ function draw(){
     ctx.beginPath(); ctx.arc(r.x, r.y, r.r + k * 32, 0, 6.283); ctx.stroke(); ctx.restore(); }
   for (const f of flashes){ ctx.fillStyle = hexA(f.col, (1 - f.t / 0.22) * 0.10); ctx.fillRect(0, 0, W, H); }
   // big centre pops (CHAIN! etc.)
-  for (const p of pops){ const k = p.t / 0.9, sc = p.big ? 34 : 21;
+  for (let pi = 0; pi < pops.length; pi++){ const p = pops[pi]; const k = p.t / 0.9, sc = p.big ? 34 : 21;
     ctx.save(); ctx.globalAlpha = k < 0.15 ? k / 0.15 : 1 - Math.max(0, k - 0.6) / 0.4;
-    ctx.translate(W / 2, H * 0.38); ctx.scale(1 + 0.25 * Math.sin(Math.min(1, k * 3) * Math.PI), 1 + 0.25 * Math.sin(Math.min(1, k * 3) * Math.PI));
+    ctx.translate(W / 2, H * 0.38 + pi * 38); ctx.scale(1 + 0.25 * Math.sin(Math.min(1, k * 3) * Math.PI), 1 + 0.25 * Math.sin(Math.min(1, k * 3) * Math.PI));
     ctx.fillStyle = p.col; ctx.font = `bold ${sc}px sans-serif`; ctx.textAlign = 'center'; ctx.shadowColor = p.col; ctx.shadowBlur = 20;
     ctx.fillText(p.text, 0, 0); ctx.restore(); }
   if (dangerLevel > 0 && state === 'playing'){
