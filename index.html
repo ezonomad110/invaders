@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v3.0 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v3.1 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -745,10 +745,36 @@ function drawVader(u, p, pr){
     ctx.beginPath(); ctx.moveTo(x1 + (x1 - x2) * 0.12, y1 + (y1 - y2) * 0.12); ctx.lineTo(x1, y1); ctx.stroke();
     ctx.restore();
   };
+  // His swing sweeps through real intermediate angles; ghost blades sampled from
+  // earlier points of the same sweep leave a fan afterimage, like the player's.
+  const HX = 63, HY = 46, SA0 = -1.18, SA1 = -2.48;
+  const bladeGhost = (ang, len, alpha) => {
+    const x2 = HX + Math.cos(ang) * len, y2 = HY + Math.sin(ang) * len;
+    ctx.save(); ctx.lineCap = 'round'; ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 9; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 16;
+    ctx.beginPath(); ctx.moveTo(HX, HY); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 2.6; ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.moveTo(HX, HY); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.restore();
+  };
   if (u.deflectT > 0){
-    saberBlade(64, 30, -52, -66);
-    ctx.save(); ctx.strokeStyle = 'rgba(254,202,202,.75)'; ctx.lineWidth = 2.4; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 12;
-    ctx.beginPath(); ctx.arc(0, -10, 88, Math.PI * 1.08, Math.PI * 1.5); ctx.stroke(); ctx.restore();
+    const q = clamp(1 - u.deflectT / 0.32, 0, 1);
+    const qe = 1 - (1 - q) * (1 - q); // ease-out: fast strike, settling end
+    const ang = SA0 + (SA1 - SA0) * qe, len = 100 + 42 * qe;
+    // swoosh fan between the rest angle and the current blade angle
+    ctx.save();
+    const fg = ctx.createRadialGradient(HX, HY, 10, HX, HY, len);
+    fg.addColorStop(0, 'rgba(239,68,68,0)'); fg.addColorStop(0.7, 'rgba(239,68,68,0.10)'); fg.addColorStop(1, 'rgba(239,68,68,0.22)');
+    ctx.fillStyle = fg;
+    ctx.beginPath(); ctx.moveTo(HX, HY); ctx.arc(HX, HY, len, SA0, ang, ang < SA0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // afterimage blades trailing the sweep
+    for (let gi = 4; gi >= 1; gi--){
+      const gq = q - gi * 0.075; if (gq < 0) continue;
+      const gqe = 1 - (1 - gq) * (1 - gq);
+      bladeGhost(SA0 + (SA1 - SA0) * gqe, 100 + 42 * gqe, 0.30 - gi * 0.055);
+    }
+    saberBlade(HX, HY, HX + Math.cos(ang) * len, HY + Math.sin(ang) * len);
   } else {
     saberBlade(64, 64, 102, -34);
   }
