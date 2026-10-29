@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v3.8 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.0 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -794,9 +794,9 @@ function drawVader(u, p, pr){
 
 
 function drawTieAdvanced(u, p, pr){
-  // The big boss IS Vader's TIE Advanced now: neon-vector front view, matching
-  // the Dark Lord's gloss - hexagonal solar panels, spherical cockpit, and the
-  // red viewport is the core. Behaviour/HP are the big boss's, unchanged.
+  // The MID boss is Vader's TIE Advanced: canon-gray gloss hull, hexagonal
+  // solar panels, spherical cockpit; the red viewport reads as its core.
+  // (Boss hierarchy: TIE Advanced < Vader < Death Star.)
   const wPx = p.wF * pr.half, k = wPx / 300;
   const bob = Math.sin(time * 1.2 + (u.phase || 0)) * 1.6 * pr.scale;
   const cx = pr.x, cy = pr.y + bob;
@@ -808,39 +808,25 @@ function drawTieAdvanced(u, p, pr){
   ctx.strokeStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 10; ctx.lineWidth = 1.6;
   ctx.beginPath(); ctx.ellipse(cx, cy + 88 * k, wPx * 0.34, 6.5 * pr.scale, 0, 0, 6.283); ctx.stroke(); ctx.shadowBlur = 0;
   ctx.translate(cx, cy); ctx.scale(k, k);
-  const hexPath = (hx, hy, R) => { ctx.beginPath(); for (let i = 0; i < 6; i++){ const a = i * Math.PI / 3; const x = hx + Math.cos(a) * R, y = hy + Math.sin(a) * R; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); };
-  const panel = (hx, hy, R, ph) => {
-    const pg = ctx.createLinearGradient(hx - R, hy - R, hx + R, hy + R);
-    pg.addColorStop(0, '#1c2338'); pg.addColorStop(0.5, '#0a0d18'); pg.addColorStop(1, '#131022');
-    hexPath(hx, hy, R); ctx.fillStyle = flash ? '#dfe3ee' : pg; ctx.fill();
-    ctx.save(); ctx.strokeStyle = 'rgba(248,113,113,.8)'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 9; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
-    hexPath(hx, hy, R * 0.68); ctx.strokeStyle = 'rgba(147,197,253,.35)'; ctx.lineWidth = 1.3; ctx.stroke();
-    ctx.strokeStyle = 'rgba(160,175,205,.4)'; ctx.lineWidth = 1.2;
-    for (let i = 0; i < 6; i++){ const a = i * Math.PI / 3 + Math.PI / 6; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + Math.cos(a) * R * 0.97, hy + Math.sin(a) * R * 0.97); ctx.stroke(); }
-    ctx.fillStyle = '#39466a'; ctx.beginPath(); ctx.arc(hx, hy, R * 0.13, 0, 6.283); ctx.fill();
-    ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 8 + 3 * Math.sin(time * 6 + ph);
-    ctx.beginPath(); ctx.arc(hx + (hx < 0 ? -R : R), hy, 2.4, 0, 6.283); ctx.fill(); ctx.shadowBlur = 0;
-  };
   // struts
-  ctx.fillStyle = '#11172a'; ctx.fillRect(-96 + 58 * 0.6, -5, 74, 10); ctx.fillRect(8, -5, 96 - 58 * 0.6 - 8, 10);
+  const sg = ctx.createLinearGradient(0, -5, 0, 5);
+  sg.addColorStop(0, '#98a2b4'); sg.addColorStop(1, '#4c586e');
+  ctx.fillStyle = flash ? '#dfe3ee' : sg;
+  ctx.fillRect(-96 + 58 * 0.6, -5, 74, 10); ctx.fillRect(8, -5, 96 - 58 * 0.6 - 8, 10);
   ctx.strokeStyle = 'rgba(147,197,253,.3)'; ctx.lineWidth = 1; ctx.strokeRect(-96 + 58 * 0.6, -5, 74, 10);
-  panel(-96, 0, 58, 1.3); panel(96, 0, 58, 4.1);
-  // cockpit ball
+  tiePanelShape(-96, 0, 58, 1, flash); tiePanelShape(96, 0, 58, 1, flash);
+  // panel tip lights
+  ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.arc(-96 - 58, 0, 2.4, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(96 + 58, 0, 2.4, 0, 6.283); ctx.fill(); ctx.shadowBlur = 0;
+  // cockpit ball (gloss) + red viewport = the core
   const r = 38;
-  const bg2 = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.15, 0, 0, r);
-  bg2.addColorStop(0, '#46557c'); bg2.addColorStop(0.45, '#171d30'); bg2.addColorStop(1, '#07080f');
-  ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.283); ctx.fillStyle = flash ? '#eef1f8' : bg2; ctx.fill();
-  ctx.save(); ctx.strokeStyle = 'rgba(248,113,113,.75)'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 10; ctx.lineWidth = 1.8; ctx.stroke(); ctx.restore();
-  ctx.save(); ctx.strokeStyle = 'rgba(147,197,253,.5)'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.arc(0, 0, r * 0.94, Math.PI * 1.05, Math.PI * 1.35); ctx.stroke(); ctx.restore();
-  // viewport = the core
-  const wr = r * 0.52;
-  ctx.beginPath(); ctx.arc(0, -r * 0.06, wr, 0, 6.283); ctx.fillStyle = '#04050a'; ctx.fill();
-  ctx.save(); ctx.strokeStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 12; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
-  ctx.strokeStyle = 'rgba(248,113,113,.65)'; ctx.lineWidth = 1.6;
-  for (let i = 0; i < 3; i++){ const a = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(-Math.cos(a) * wr, -r * 0.06 - Math.sin(a) * wr); ctx.lineTo(Math.cos(a) * wr, -r * 0.06 + Math.sin(a) * wr); ctx.stroke(); }
+  glossBallShape(0, 0, r, true, flash);
+  const wr = r * 0.48;
+  ctx.save(); ctx.strokeStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 12; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, wr, 0, 6.283); ctx.stroke(); ctx.restore();
   ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 10;
-  ctx.beginPath(); ctx.arc(0, -r * 0.06, 3.2, 0, 6.283); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.beginPath(); ctx.arc(0, 0, 3.2, 0, 6.283); ctx.fill(); ctx.shadowBlur = 0;
   // chin cannons
   ctx.fillStyle = '#232a3e'; ctx.fillRect(-r * 0.28, r * 0.92, 5, 11); ctx.fillRect(r * 0.28 - 5, r * 0.92, 5, 11);
   ctx.fillStyle = '#22c55e'; ctx.shadowColor = '#22c55e'; ctx.shadowBlur = 7;
@@ -852,6 +838,193 @@ function drawTieAdvanced(u, p, pr){
   ctx.fillStyle = ratio > 0.4 ? '#facc15' : '#ef4444'; ctx.fillRect(cx - wPx / 2, cy - 76 * k, wPx * ratio, 3.4);
 }
 
+
+// ---------- canon-gray + dark-neon fleet (v4.0 visual unification) ----------
+function tiePanelShape(cx, cy, R, sx, flash){
+  const pg = ctx.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
+  pg.addColorStop(0, '#5a6a88'); pg.addColorStop(0.45, '#39445a'); pg.addColorStop(1, '#1d2536');
+  const hex = (r, s2) => { ctx.beginPath(); for (let i = 0; i < 6; i++){ const a = i * Math.PI / 3; const x = cx + Math.cos(a) * r * (s2 || 1), y = cy + Math.sin(a) * r; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); };
+  hex(R, sx); ctx.fillStyle = flash ? '#e8ecf2' : pg; ctx.fill();
+  ctx.save(); ctx.strokeStyle = '#c9d2e0'; ctx.shadowColor = 'rgba(239,68,68,.55)'; ctx.shadowBlur = 5; ctx.lineWidth = 1.7; ctx.stroke(); ctx.restore();
+  hex(R * 0.62, sx);
+  const ig = ctx.createLinearGradient(cx, cy - R * 0.6, cx, cy + R * 0.6);
+  ig.addColorStop(0, '#2c364c'); ig.addColorStop(1, '#171e2e');
+  ctx.fillStyle = flash ? '#dfe3ee' : ig; ctx.fill(); ctx.strokeStyle = 'rgba(174,184,200,.4)'; ctx.lineWidth = 0.9; ctx.stroke();
+  const hg = ctx.createRadialGradient(cx - 1, cy - 1, 0.4, cx, cy, R * 0.16);
+  hg.addColorStop(0, '#e8ecf2'); hg.addColorStop(1, '#59637a');
+  ctx.beginPath(); ctx.arc(cx, cy, Math.max(1.2, R * 0.13), 0, 6.283); ctx.fillStyle = hg; ctx.fill();
+}
+function glossBallShape(cx, cy, r, win, flash){
+  const g = ctx.createRadialGradient(cx - r * 0.38, cy - r * 0.42, r * 0.12, cx, cy, r * 1.05);
+  g.addColorStop(0, '#f7f9fc'); g.addColorStop(0.32, '#ccd3df'); g.addColorStop(0.68, '#7d879c'); g.addColorStop(1, '#414c61');
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.fillStyle = flash ? '#f2f5fa' : g; ctx.fill();
+  if (!flash){
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,.8)';
+    ctx.beginPath(); ctx.ellipse(cx - r * 0.36, cy - r * 0.44, r * 0.30, r * 0.16, -0.6, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
+    ctx.beginPath(); ctx.ellipse(cx - r * 0.3, cy - r * 0.38, r * 0.5, r * 0.26, -0.6, 0, 6.283); ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.strokeStyle = 'rgba(147,197,253,.4)'; ctx.lineWidth = Math.max(0.8, r * 0.09); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.97, Math.PI * 0.25, Math.PI * 0.62); ctx.stroke(); ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(15,20,32,.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.stroke();
+  if (win){
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.48, 0, 6.283); ctx.fillStyle = '#101623'; ctx.fill();
+    ctx.strokeStyle = '#39445a'; ctx.lineWidth = 1.1; ctx.stroke();
+    ctx.strokeStyle = 'rgba(174,184,200,.5)'; ctx.lineWidth = 0.9;
+    for (let i = 0; i < 3; i++){ const a = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(cx - Math.cos(a) * r * 0.48, cy - Math.sin(a) * r * 0.48); ctx.lineTo(cx + Math.cos(a) * r * 0.48, cy + Math.sin(a) * r * 0.48); ctx.stroke(); }
+  }
+}
+function drawTieShip(u, p, pr, variant){
+  const wPx = p.wF * pr.half, k = wPx / 80, flash = u.flashT > 0;
+  ctx.save(); ctx.translate(pr.x, pr.y); ctx.scale(k, k);
+  ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(0, 25, 30, 5.6, 0, 0, 6.283); ctx.fill();
+  const sg = ctx.createLinearGradient(0, -3, 0, 3);
+  sg.addColorStop(0, '#98a2b4'); sg.addColorStop(1, '#4c586e');
+  ctx.fillStyle = flash ? '#dfe3ee' : sg;
+  if (variant === 'bomber') ctx.fillRect(-39, -2.2, 78, 4.4); else ctx.fillRect(-33, -2.2, 66, 4.4);
+  const sx = variant === 'ceptor' ? 1.35 : 1;
+  tiePanelShape(-24, 0, 15, sx, flash); tiePanelShape(24, 0, 15, sx, flash);
+  if (variant === 'bomber'){ glossBallShape(-8.5, 0, 8.6, false, flash); glossBallShape(8.5, 0, 8.6, true, flash); }
+  else glossBallShape(0, 0, 9.3, true, flash);
+  ctx.restore();
+}
+function drawProbeDroid(u, p, pr){
+  const wPx = p.wF * pr.half, k = wPx / 42, flash = u.flashT > 0;
+  ctx.save(); ctx.translate(pr.x, pr.y); ctx.scale(k, k);
+  ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(0, 30, 15, 3.6, 0, 0, 6.283); ctx.fill();
+  ctx.strokeStyle = flash ? '#e8ecf2' : '#9aa4b5'; ctx.lineWidth = 1.3;
+  for (const dx of [-11, 0, 11]){ ctx.beginPath(); ctx.moveTo(dx * 0.6, 9); ctx.lineTo(dx, 20); ctx.lineTo(dx * 1.25, 27); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(-3, -12); ctx.lineTo(-6, -24); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(4, -12); ctx.lineTo(8, -21); ctx.stroke();
+  glossBallShape(0, 0, 13.5, false, flash);
+  ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 8;
+  ctx.globalAlpha = 0.75 + 0.25 * Math.sin(time * 5 + (u.phase || 0));
+  ctx.beginPath(); ctx.arc(0, -2, 3, 0, 6.283); ctx.fill();
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  ctx.restore();
+}
+function drawDroideka(u, p, pr){
+  const wPx = p.wF * pr.half, k = wPx / 46, flash = u.flashT > 0;
+  ctx.save(); ctx.translate(pr.x, pr.y); ctx.scale(k, k);
+  ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(0, 25, 16, 3.8, 0, 0, 6.283); ctx.fill();
+  ctx.strokeStyle = flash ? '#e8ecf2' : '#9aa4b5'; ctx.lineWidth = 1.6;
+  for (const dx of [-12, 0, 12]){ ctx.beginPath(); ctx.moveTo(dx * 0.5, 8); ctx.lineTo(dx, 21); ctx.stroke(); }
+  glossBallShape(0, 0, 14.5, false, flash);
+  ctx.fillStyle = '#232c40'; ctx.fillRect(-13, 2, 7, 3.4); ctx.fillRect(6, 2, 7, 3.4);
+  ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 6;
+  ctx.fillRect(-13, 2.8, 2, 1.8); ctx.fillRect(11, 2.8, 2, 1.8); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ff3131'; ctx.beginPath(); ctx.arc(0, -6, 1.8, 0, 6.283); ctx.fill();
+  ctx.restore();
+}
+function drawDestroyer(u, p, pr, superMode){
+  const wPx = p.wF * pr.half, k = wPx / 232, flash = u.flashT > 0;
+  const bob = Math.sin(time * 1.1 + (u.phase || 0)) * 1.6 * pr.scale;
+  const cx = pr.x, cy = pr.y + bob;
+  ctx.save(); ctx.translate(cx, cy); if (superMode) ctx.scale(1.19, 1); ctx.scale(k, k);
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0, 74, 98, 10, 0, 0, 6.283); ctx.fill();
+  const W = 232;
+  const hg = ctx.createLinearGradient(0, -58, 0, 62);
+  hg.addColorStop(0, '#8b96a9'); hg.addColorStop(0.45, '#b4bdcc'); hg.addColorStop(1, '#79849a');
+  ctx.beginPath(); ctx.moveTo(-W / 2, -34); ctx.lineTo(W / 2, -34); ctx.lineTo(0, 62); ctx.closePath();
+  ctx.fillStyle = flash ? '#eef1f8' : hg; ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.moveTo(-W / 2, -34); ctx.lineTo(W / 2, -34); ctx.lineTo(0, 62); ctx.closePath(); ctx.clip();
+  if (!flash){
+    const sheen = ctx.createLinearGradient(-W * 0.6, -40, W * 0.2, 60);
+    sheen.addColorStop(0.32, 'rgba(255,255,255,0)'); sheen.addColorStop(0.5, 'rgba(255,255,255,.20)'); sheen.addColorStop(0.68, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sheen; ctx.fillRect(-W / 2, -40, W, 110);
+  }
+  ctx.strokeStyle = 'rgba(30,38,54,.35)'; ctx.lineWidth = 1;
+  for (const f of [-0.5, -0.22, 0.06, 0.34]){ ctx.beginPath(); ctx.moveTo(f * W * 0.8, -34); ctx.lineTo(0, 62); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(20,26,40,.30)'; ctx.fillRect(-W / 2, -8, W, 5);
+  ctx.fillStyle = 'rgba(16,21,33,.20)'; ctx.fillRect(-W / 2, 20, W, 26);
+  ctx.fillStyle = '#f2f5fa';
+  for (let i = 0; i < 26; i++){ const px = Math.sin(i * 37.7) * W * 0.38, py = -30 + (i % 6) * 11 + Math.cos(i * 13.3) * 3; if (Math.abs(px) < W * 0.42 - Math.max(0, py - 10) * 1.1){ ctx.globalAlpha = 0.35 + 0.45 * Math.abs(Math.sin(i * 7.1)); ctx.fillRect(px, py, 1.7, 1.7); } }
+  ctx.globalAlpha = 1; ctx.restore();
+  ctx.beginPath(); ctx.moveTo(-W / 2, -34); ctx.lineTo(W / 2, -34); ctx.lineTo(0, 62); ctx.closePath();
+  ctx.strokeStyle = 'rgba(240,244,250,.55)'; ctx.lineWidth = 1.4; ctx.stroke();
+  const trap = (x1, x2, y1, y2, inset, top) => {
+    ctx.fillStyle = 'rgba(10,14,24,.32)';
+    ctx.beginPath(); ctx.moveTo(x1, y1 + 4); ctx.lineTo(x2, y1 + 4); ctx.lineTo(x2 - inset, y2 + 4); ctx.lineTo(x1 + inset, y2 + 4); ctx.closePath(); ctx.fill();
+    const g = ctx.createLinearGradient(0, y1, 0, y2);
+    g.addColorStop(0, flash ? '#eef1f8' : top); g.addColorStop(1, '#79849a');
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y1); ctx.lineTo(x2 - inset, y2); ctx.lineTo(x1 + inset, y2); ctx.closePath();
+    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(240,244,250,.6)'; ctx.lineWidth = 1.1; ctx.stroke();
+  };
+  trap(-62, 62, -52, -36, 8, '#c0c9d8'); trap(-46, 46, -64, -50, 7, '#ccd4e1'); trap(-30, 30, -74, -62, 5, '#d9dfe9');
+  ctx.fillStyle = '#98a2b4'; ctx.fillRect(-4, -86, 8, 14);
+  const bg2 = ctx.createLinearGradient(0, -92, 0, -85);
+  bg2.addColorStop(0, '#d3dae6'); bg2.addColorStop(1, '#8b96a9');
+  ctx.fillStyle = flash ? '#eef1f8' : bg2; ctx.fillRect(-34, -92, 68, 7);
+  ctx.strokeStyle = 'rgba(240,244,250,.55)'; ctx.lineWidth = 1; ctx.strokeRect(-34, -92, 68, 7);
+  for (const gx of [-27, 27]){
+    const gg = ctx.createRadialGradient(gx - 2, -97, 1, gx, -94, 6.5);
+    gg.addColorStop(0, '#f7f9fc'); gg.addColorStop(0.5, '#aeb8c8'); gg.addColorStop(1, '#59637a');
+    ctx.beginPath(); ctx.arc(gx, -94, 6, 0, 6.283); ctx.fillStyle = flash ? '#eef1f8' : gg; ctx.fill();
+    if (!flash){ ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(gx - 2, -96.5, 1.6, 0, 6.283); ctx.fill(); }
+  }
+  ctx.fillStyle = '#39445a'; ctx.fillRect(-2, -100, 4, 8);
+  ctx.restore();
+  const ratio = Math.max(0, u.hp / u.maxHp);
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(cx - wPx / 2, cy - 108 * k, wPx, 3.4);
+  ctx.fillStyle = ratio > 0.4 ? '#facc15' : '#ef4444'; ctx.fillRect(cx - wPx / 2, cy - 108 * k, wPx * ratio, 3.4);
+}
+function drawDeathStar(u, p, pr){
+  const wPx = p.wF * pr.half, k = wPx / 190, flash = u.flashT > 0;
+  const bob = Math.sin(time * 0.9 + (u.phase || 0)) * 1.8 * pr.scale;
+  const cx = pr.x, cy = pr.y + bob, R = 88;
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k);
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(6, R + 14, R * 0.8, 9, 0, 0, 6.283); ctx.fill();
+  const ag = ctx.createRadialGradient(0, 0, 10, 0, 0, 130);
+  ag.addColorStop(0, 'rgba(74,222,128,0.10)'); ag.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = ag; ctx.fillRect(-130, -130, 260, 260);
+  const g = ctx.createRadialGradient(-R * 0.38, -R * 0.44, R * 0.14, 0, 0, R * 1.02);
+  g.addColorStop(0, '#eef1f6'); g.addColorStop(0.3, '#c6cdd9'); g.addColorStop(0.66, '#8b95a7'); g.addColorStop(1, '#454f61');
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, 6.283); ctx.fillStyle = flash ? '#f2f5fa' : g; ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.arc(0, 0, R, 0, 6.283); ctx.clip();
+  if (!flash){
+    const shade = ctx.createRadialGradient(-R * 0.3, -R * 0.3, R * 0.4, R * 0.35, R * 0.4, R * 1.25);
+    shade.addColorStop(0.55, 'rgba(8,11,18,0)'); shade.addColorStop(1, 'rgba(8,11,18,.5)');
+    ctx.fillStyle = shade; ctx.fillRect(-R, -R, R * 2, R * 2);
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.beginPath(); ctx.ellipse(-R * 0.36, -R * 0.46, R * 0.30, R * 0.15, -0.6, 0, 6.283); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(20,26,40,.16)';
+  for (let i = 0; i < 40; i++){ const px = Math.sin(i * 51.3) * R * 0.92, py = Math.cos(i * 29.7) * R * 0.92; ctx.fillRect(px, py, 5 + (i % 3) * 3, 2.4); }
+  ctx.fillStyle = 'rgba(13,17,27,.6)'; ctx.fillRect(-R, -3, R * 2, 7);
+  ctx.fillStyle = 'rgba(240,244,250,.5)'; ctx.fillRect(-R, -4.4, R * 2, 1.2);
+  ctx.fillStyle = '#d7dde8';
+  for (let i = 0; i < 22; i++){ ctx.globalAlpha = 0.55; ctx.fillRect(-R + 6 + i * 8, -0.6, 1.6, 1.6); }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = 'rgba(20,26,40,.35)';
+  ctx.beginPath(); ctx.moveTo(-R, -14); ctx.lineTo(R, -14); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-R, 16); ctx.lineTo(R, 16); ctx.stroke();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, 6.283); ctx.strokeStyle = 'rgba(240,244,250,.55)'; ctx.lineWidth = 1.6; ctx.stroke();
+  const dx = -R * 0.34, dy = -R * 0.36, dr = R * 0.34;
+  const dg = ctx.createRadialGradient(dx, dy, dr * 0.1, dx, dy, dr);
+  dg.addColorStop(0, '#5d6879'); dg.addColorStop(0.55, '#79849a'); dg.addColorStop(0.9, '#a7b0c0'); dg.addColorStop(1, '#d3dae6');
+  ctx.beginPath(); ctx.arc(dx, dy, dr, 0, 6.283); ctx.fillStyle = flash ? '#e8ecf2' : dg; ctx.fill();
+  ctx.strokeStyle = 'rgba(30,38,54,.5)'; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.save(); ctx.strokeStyle = 'rgba(240,244,250,.65)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(dx, dy, dr * 0.97, Math.PI * 0.15, Math.PI * 0.55); ctx.stroke(); ctx.restore();
+  ctx.beginPath(); ctx.arc(dx, dy, dr * 0.62, 0, 6.283); ctx.strokeStyle = 'rgba(30,38,54,.35)'; ctx.stroke();
+  ctx.save(); ctx.fillStyle = '#4ade80'; ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 13 + 5 * Math.sin(time * 2.4);
+  ctx.beginPath(); ctx.arc(dx, dy, 4.8, 0, 6.283); ctx.fill(); ctx.restore();
+  ctx.strokeStyle = 'rgba(74,222,128,.35)'; ctx.lineWidth = 1;
+  for (let i = 0; i < 8; i++){ const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(dx + Math.cos(a) * dr * 0.9, dy + Math.sin(a) * dr * 0.9); ctx.lineTo(dx + Math.cos(a) * dr * 0.2, dy + Math.sin(a) * dr * 0.2); ctx.stroke(); }
+  // the three cores sit in the trench
+  ctx.save(); ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 10;
+  for (const o of [-0.22, 0, 0.22]){ ctx.beginPath(); ctx.arc(o * 190, 0.5, 4.2, 0, 6.283); ctx.fill(); }
+  ctx.restore();
+  ctx.restore();
+  const ratio = Math.max(0, u.hp / u.maxHp);
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(cx - wPx / 2, cy - 100 * k, wPx, 3.4);
+  ctx.fillStyle = ratio > 0.4 ? '#facc15' : '#ef4444'; ctx.fillRect(cx - wPx / 2, cy - 100 * k, wPx * ratio, 3.4);
+}
+
 function drawInvader(u){
   const p = unitPos(u), pr = proj(p.x, p.z);
   const wPx = p.wF * pr.half, hPx = wPx * 0.78;
@@ -859,16 +1032,12 @@ function drawInvader(u){
   if (u.kind === 'vader'){ drawVader(u, p, pr); return; }
   ctx.save();
   if (!isBoss(u)){
-    const spr = SPRITES[KIND_SPRITE[u.kind] !== undefined ? KIND_SPRITE[u.kind] : u.row], cell = wPx / spr[0].length;
-    ctx.shadowColor = u.flashT > 0 ? '#fff' : col; ctx.shadowBlur = 9;
-    ctx.fillStyle = u.flashT > 0 ? '#fff' : col;
-    const bob = (Math.floor(time * 2) % 2 === 0) ? 0 : cell * 0.35;
-    spr.forEach((row, ri) => { for (let ci = 0; ci < row.length; ci++){
-      if (row[ci] !== 'X') continue;
-      let yy = pr.y - hPx / 2 + ri * cell; if (ri >= spr.length - 2) yy += bob - cell * 0.35;
-      ctx.fillRect(pr.x - wPx / 2 + ci * cell, yy, cell + 0.6, cell + 0.6);
-    }});
-    if (u.kind === 'weaver'){ ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.fillRect(pr.x - cell * 0.6, pr.y - cell * 0.6, cell * 1.2, cell * 1.2); }
+    const flashU = u.flashT > 0;
+    if (u.kind === 'orbiter') drawProbeDroid(u, p, pr);
+    else if (u.kind === 'shield') drawDroideka(u, p, pr);
+    else if (u.kind === 'diver') drawTieShip(u, p, pr, 'bomber');
+    else if (u.kind === 'weaver') drawTieShip(u, p, pr, 'fighter');
+    else drawTieShip(u, p, pr, u.row === 0 ? 'bomber' : (u.row === 3 ? 'fighter' : 'ceptor'));
     if (u.maxHp >= 2){ // armour pips: how many more hits this one takes
       const pw = 5.2 * pr.scale, y0 = pr.y + hPx / 2 + 4.5 * pr.scale;
       for (let i = 0; i < u.maxHp; i++){
@@ -884,39 +1053,12 @@ function drawInvader(u){
       ctx.globalAlpha = 0.10; ctx.fillStyle = '#67e8f9'; ctx.beginPath(); ctx.arc(pr.x, pr.y, wPx * 0.72, 0, 6.283); ctx.fill();
       ctx.globalAlpha = 1;
     }
-  } else if (u.kind === 'big'){
+  } else if (u.kind === 'mid'){
     drawTieAdvanced(u, p, pr);
+  } else if (u.kind === 'big'){
+    drawDestroyer(u, p, pr, false);
   } else {
-    // boss: angular destroyer-like hull + red core, scaled by kind
-    const bw = wPx, bh = (u.kind === 'mid' ? wPx * 0.95 : wPx * 0.52);
-    ctx.shadowColor = u.flashT > 0 ? '#fff' : col; ctx.shadowBlur = 16;
-    ctx.fillStyle = u.flashT > 0 ? '#fff' : '#1f2430';
-    ctx.strokeStyle = col; ctx.lineWidth = 2;
-    ctx.beginPath();
-    if (u.kind === 'big' || u.kind === 'super'){
-      ctx.moveTo(pr.x - bw / 2, pr.y + bh / 2); ctx.lineTo(pr.x - bw * 0.18, pr.y - bh / 2); ctx.lineTo(pr.x + bw * 0.18, pr.y - bh / 2); ctx.lineTo(pr.x + bw / 2, pr.y + bh / 2); ctx.lineTo(pr.x, pr.y + bh * 0.22);
-    } else {
-      ctx.moveTo(pr.x - bw / 2, pr.y - bh / 2); ctx.lineTo(pr.x + bw / 2, pr.y - bh / 2); ctx.lineTo(pr.x + bw / 2, pr.y + bh / 2); ctx.lineTo(pr.x - bw / 2, pr.y + bh / 2);
-    }
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    // wing panels
-    ctx.fillStyle = hexA(col, 0.5);
-    ctx.fillRect(pr.x - bw * 0.46, pr.y - bh * 0.12, bw * 0.26, bh * 0.24);
-    ctx.fillRect(pr.x + bw * 0.20, pr.y - bh * 0.12, bw * 0.26, bh * 0.24);
-    if (u.kind !== 'mid'){
-      ctx.fillStyle = '#2b3242'; ctx.fillRect(pr.x - bw * 0.05, pr.y - bh / 2 - bh * 0.22, bw * 0.10, bh * 0.22);
-      ctx.fillStyle = hexA(col, 0.85);
-      ctx.beginPath(); ctx.arc(pr.x - bw * 0.09, pr.y - bh / 2 - bh * 0.20, Math.max(2.2, bw * 0.028), 0, 6.283); ctx.fill();
-      ctx.beginPath(); ctx.arc(pr.x + bw * 0.09, pr.y - bh / 2 - bh * 0.20, Math.max(2.2, bw * 0.028), 0, 6.283); ctx.fill();
-    }
-    // red core (super has three)
-    ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 14;
-    const cores = u.kind === 'super' ? [-0.22, 0, 0.22] : [0];
-    cores.forEach(o => { ctx.beginPath(); ctx.arc(pr.x + bw * o, pr.y + (u.kind === 'super' ? bh * 0.05 : 0), Math.max(3.4, bw * (u.kind === 'super' ? 0.05 : 0.075)), 0, 6.283); ctx.fill(); });
-    // HP bar
-    ctx.shadowBlur = 0; const ratio = Math.max(0, u.hp / u.maxHp);
-    ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(pr.x - bw / 2, pr.y - bh / 2 - 8 * pr.scale, bw, 3.4);
-    ctx.fillStyle = ratio > 0.4 ? '#facc15' : '#ef4444'; ctx.fillRect(pr.x - bw / 2, pr.y - bh / 2 - 8 * pr.scale, bw * ratio, 3.4);
+    drawDeathStar(u, p, pr);
   }
   if (pendingShot && pendingShot.u === u){ // telegraph: charge glow + pulsing ring
     const k = 1 - Math.max(0, pendingShot.t) / 0.45;
