@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v4.2 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.3 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -128,6 +128,7 @@ function screenToFieldX(sx){ // inverse of proj at the player's depth
 const PLAYER_Z = 0.93, FRONTLINE_Z = 0.80, WALL_X = 1.0;
 const VADER_TEST_MODE = false; // release: Vader on WAVE 4/7/10... (set true only for local swing checks)
 const TIE_TEST_MODE = false; // release: big boss on WAVE 3/6/9... only (TIE Advanced approved v3.7 check)
+const DS_TEST_MODE = true; // TEMP: Death Star super boss also on EPISODE 1 for the pattern check
 
 // ---------- audio ----------
 let AC = null, muted = false;
@@ -303,7 +304,7 @@ function buildWave(){
   shootT = 1.4;
   const occupied = new Set();
   const key = (c, r) => c + ',' + r;
-  if (wave % 6 === 0){
+  if (wave % 6 === 0 || (DS_TEST_MODE && wave === 1)){
     // SUPER boss: an executor-class giant spanning cols 1..5, rows 0..1
     for (let r = 0; r <= 1; r++) for (let c = 1; c <= 5; c++) occupied.add(key(c, r));
     units.push({ kind: 'super', col: 3, row: 0, rows: 2, wCells: 5, hp: 26 + wave * 3, maxHp: 26 + wave * 3, pts: 1500, flashT: 0 });
