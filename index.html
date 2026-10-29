@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v3.3 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v3.4 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -516,7 +516,7 @@ function update(dt){
         if (u.kind === 'vader' && !fromBackHit && ballPower(b.chain) < 3){
           // DEFLECTED! The Dark Lord swats the bolt back at the player.
           // Only a blazing chain (power 3+) - or a strike from behind - can touch him.
-          u.deflectT = 0.32; u.deflectDur = 0.32; u.flashT = 0.10;
+          u.deflectT = 0.22; u.deflectDur = 0.22; u.flashT = 0.10;
           b.returned = false; b.chain = 0; b.pierce = 0; b.backCombo = 0;
           if (b.hitSet) b.hitSet.clear();
           const DS = ballSpeed();
@@ -762,8 +762,8 @@ function drawVader(u, p, pr){
   };
   let swingAng = null, swingLen = 0;
   if (u.deflectT > 0){
-    const q = clamp(1 - u.deflectT / (u.deflectDur || 0.32), 0, 1);
-    const qe = 1 - (1 - q) * (1 - q); // ease-out: fast strike, settling end
+    const q = clamp(1 - u.deflectT / (u.deflectDur || 0.22), 0, 1);
+    const qe = 1 - Math.pow(1 - q, 3); // cubic ease-out: a whip-crack strike, no lazy tail
     swingAng = SA0 + (SA1 - SA0) * qe; swingLen = 100 + 42 * qe;
     u.vTrail.push({ a: swingAng, l: swingLen, t: time });
     if (u.vTrail.length > 22) u.vTrail.shift();
