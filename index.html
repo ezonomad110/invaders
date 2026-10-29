@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v3.1 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v3.2 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -126,6 +126,7 @@ function screenToFieldX(sx){ // inverse of proj at the player's depth
   return (sx - p.x) / p.half;
 }
 const PLAYER_Z = 0.93, FRONTLINE_Z = 0.80, WALL_X = 1.0;
+const VADER_TEST_MODE = true; // TEMP: Vader from EPISODE 1 while checking his swing trail - set false for release
 
 // ---------- audio ----------
 let AC = null, muted = false;
@@ -312,7 +313,7 @@ function buildWave(){
   } else {
     // mid boss: centre column, rows 0..1 (tall)
     occupied.add(key(3, 0)); occupied.add(key(3, 1));
-    if (wave >= 4 && wave % 3 === 1){
+    if (VADER_TEST_MODE || (wave >= 4 && wave % 3 === 1)){
       // THE DARK LORD: deflects weak bolts back at you (see collision rules)
       units.push({ kind: 'vader', col: 3, row: 0, rows: 2, wCells: 1, hp: 12 + wave, maxHp: 12 + wave, pts: 800, flashT: 0, deflectT: 0 });
     } else {
@@ -342,7 +343,7 @@ function buildWave(){
   if (wave >= 3){ convert(2, 1, 'diver', 3, 40); convert(4, 1, 'diver', 3, 40); convert(0, 1, 'orbiter', 2, 40); convert(6, 1, 'orbiter', 2, 40); }
   if (wave >= 4){ convert(2, 3, 'shield', 2, 60, 3); convert(4, 3, 'shield', 2, 60, 3); }
   if (wave >= 5){ convert(3, 2, 'weaver', 1, 30); convert(0, 2, 'diver', 3, 40); convert(6, 2, 'diver', 3, 40); }
-  units.forEach(u => { u.alive = true; u.phase = (u.col * 1.73 + u.row * 2.39) % 6.283; if (u.shieldHp === undefined) u.shieldHp = 0; if (u.deflectT === undefined) u.deflectT = 0; });
+  units.forEach(u => { u.alive = true; u.phase = (u.col * 1.73 + u.row * 2.39) % 6.283; if (u.shieldHp === undefined) u.shieldHp = 0; if (u.deflectT === undefined) u.deflectT = 0; if (!u.vTrail) u.vTrail = []; });
 }
 const KIND_W = { normal: 0.19, weaver: 0.19, diver: 0.21, orbiter: 0.18, shield: 0.22, mid: 0.30, big: 0.62, super: 1.12, vader: 0.37 };
 function unitBasePos(u){
@@ -515,7 +516,7 @@ function update(dt){
         if (u.kind === 'vader' && !fromBackHit && ballPower(b.chain) < 3){
           // DEFLECTED! The Dark Lord swats the bolt back at the player.
           // Only a blazing chain (power 3+) - or a strike from behind - can touch him.
-          u.deflectT = 0.32; u.flashT = 0.10;
+          u.deflectT = 0.42; u.deflectDur = 0.42; u.flashT = 0.10;
           b.returned = false; b.chain = 0; b.pierce = 0; b.backCombo = 0;
           if (b.hitSet) b.hitSet.clear();
           const DS = ballSpeed();
@@ -745,39 +746,43 @@ function drawVader(u, p, pr){
     ctx.beginPath(); ctx.moveTo(x1 + (x1 - x2) * 0.12, y1 + (y1 - y2) * 0.12); ctx.lineTo(x1, y1); ctx.stroke();
     ctx.restore();
   };
-  // His swing sweeps through real intermediate angles; ghost blades sampled from
-  // earlier points of the same sweep leave a fan afterimage, like the player's.
+  // His swing is sampled into a trail buffer every frame and the samples fade
+  // over ~0.5s - the same trick as the player's saber trail - so the blade
+  // leaves a smooth, lingering fan instead of jumping between poses.
   const HX = 63, HY = 46, SA0 = -1.18, SA1 = -2.48;
+  if (!u.vTrail) u.vTrail = [];
   const bladeGhost = (ang, len, alpha) => {
     const x2 = HX + Math.cos(ang) * len, y2 = HY + Math.sin(ang) * len;
     ctx.save(); ctx.lineCap = 'round'; ctx.globalAlpha = alpha;
-    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 9; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 16;
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 10.5; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 18;
     ctx.beginPath(); ctx.moveTo(HX, HY); ctx.lineTo(x2, y2); ctx.stroke();
-    ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 2.6; ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 3; ctx.shadowBlur = 0;
     ctx.beginPath(); ctx.moveTo(HX, HY); ctx.lineTo(x2, y2); ctx.stroke();
     ctx.restore();
   };
+  let swingAng = null, swingLen = 0;
   if (u.deflectT > 0){
-    const q = clamp(1 - u.deflectT / 0.32, 0, 1);
+    const q = clamp(1 - u.deflectT / (u.deflectDur || 0.42), 0, 1);
     const qe = 1 - (1 - q) * (1 - q); // ease-out: fast strike, settling end
-    const ang = SA0 + (SA1 - SA0) * qe, len = 100 + 42 * qe;
+    swingAng = SA0 + (SA1 - SA0) * qe; swingLen = 100 + 42 * qe;
+    u.vTrail.push({ a: swingAng, l: swingLen, t: time });
+    if (u.vTrail.length > 22) u.vTrail.shift();
     // swoosh fan between the rest angle and the current blade angle
     ctx.save();
-    const fg = ctx.createRadialGradient(HX, HY, 10, HX, HY, len);
-    fg.addColorStop(0, 'rgba(239,68,68,0)'); fg.addColorStop(0.7, 'rgba(239,68,68,0.10)'); fg.addColorStop(1, 'rgba(239,68,68,0.22)');
+    const fg = ctx.createRadialGradient(HX, HY, 10, HX, HY, swingLen);
+    fg.addColorStop(0, 'rgba(239,68,68,0)'); fg.addColorStop(0.7, 'rgba(239,68,68,0.16)'); fg.addColorStop(1, 'rgba(239,68,68,0.30)');
     ctx.fillStyle = fg;
-    ctx.beginPath(); ctx.moveTo(HX, HY); ctx.arc(HX, HY, len, SA0, ang, ang < SA0); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(HX, HY); ctx.arc(HX, HY, swingLen, SA0, swingAng, swingAng < SA0); ctx.closePath(); ctx.fill();
     ctx.restore();
-    // afterimage blades trailing the sweep
-    for (let gi = 4; gi >= 1; gi--){
-      const gq = q - gi * 0.075; if (gq < 0) continue;
-      const gqe = 1 - (1 - gq) * (1 - gq);
-      bladeGhost(SA0 + (SA1 - SA0) * gqe, 100 + 42 * gqe, 0.30 - gi * 0.055);
-    }
-    saberBlade(HX, HY, HX + Math.cos(ang) * len, HY + Math.sin(ang) * len);
-  } else {
-    saberBlade(64, 64, 102, -34);
   }
+  // lingering afterimage: every sampled pose, fading with age
+  u.vTrail = u.vTrail.filter(sm => time - sm.t < 0.5);
+  for (const sm of u.vTrail){
+    if (swingAng !== null && sm.a === swingAng && sm.t === time) continue; // the live blade draws itself
+    bladeGhost(sm.a, sm.l, (1 - (time - sm.t) / 0.5) * 0.55);
+  }
+  if (swingAng !== null) saberBlade(HX, HY, HX + Math.cos(swingAng) * swingLen, HY + Math.sin(swingAng) * swingLen);
+  else saberBlade(64, 64, 102, -34);
   ctx.restore();
   // HP bar above the helmet
   const bw2 = wPx * 1.15, bx = pr.x - bw2 / 2, by = cy - 138 * k;
