@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v3.2 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v3.3 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -516,7 +516,7 @@ function update(dt){
         if (u.kind === 'vader' && !fromBackHit && ballPower(b.chain) < 3){
           // DEFLECTED! The Dark Lord swats the bolt back at the player.
           // Only a blazing chain (power 3+) - or a strike from behind - can touch him.
-          u.deflectT = 0.42; u.deflectDur = 0.42; u.flashT = 0.10;
+          u.deflectT = 0.32; u.deflectDur = 0.32; u.flashT = 0.10;
           b.returned = false; b.chain = 0; b.pierce = 0; b.backCombo = 0;
           if (b.hitSet) b.hitSet.clear();
           const DS = ballSpeed();
@@ -747,7 +747,7 @@ function drawVader(u, p, pr){
     ctx.restore();
   };
   // His swing is sampled into a trail buffer every frame and the samples fade
-  // over ~0.5s - the same trick as the player's saber trail - so the blade
+  // over ~0.85s - the same trick as the player's saber trail - so the blade
   // leaves a smooth, lingering fan instead of jumping between poses.
   const HX = 63, HY = 46, SA0 = -1.18, SA1 = -2.48;
   if (!u.vTrail) u.vTrail = [];
@@ -762,7 +762,7 @@ function drawVader(u, p, pr){
   };
   let swingAng = null, swingLen = 0;
   if (u.deflectT > 0){
-    const q = clamp(1 - u.deflectT / (u.deflectDur || 0.42), 0, 1);
+    const q = clamp(1 - u.deflectT / (u.deflectDur || 0.32), 0, 1);
     const qe = 1 - (1 - q) * (1 - q); // ease-out: fast strike, settling end
     swingAng = SA0 + (SA1 - SA0) * qe; swingLen = 100 + 42 * qe;
     u.vTrail.push({ a: swingAng, l: swingLen, t: time });
@@ -776,10 +776,10 @@ function drawVader(u, p, pr){
     ctx.restore();
   }
   // lingering afterimage: every sampled pose, fading with age
-  u.vTrail = u.vTrail.filter(sm => time - sm.t < 0.5);
+  u.vTrail = u.vTrail.filter(sm => time - sm.t < 0.85);
   for (const sm of u.vTrail){
     if (swingAng !== null && sm.a === swingAng && sm.t === time) continue; // the live blade draws itself
-    bladeGhost(sm.a, sm.l, (1 - (time - sm.t) / 0.5) * 0.55);
+    bladeGhost(sm.a, sm.l, (1 - (time - sm.t) / 0.85) * 0.6);
   }
   if (swingAng !== null) saberBlade(HX, HY, HX + Math.cos(swingAng) * swingLen, HY + Math.sin(swingAng) * swingLen);
   else saberBlade(64, 64, 102, -34);
