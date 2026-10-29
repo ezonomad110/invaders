@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v4.5 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.6 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -67,7 +67,7 @@
         <p>MOVE with the LEFT STICK. SWING your lightsaber with the RIGHT BUTTON.</p>
         <p>Enemy bolts ricochet off the walls. Deflect them back! Every return builds that bolt's CHAIN — faster, stronger, and piercing one more enemy for every chain level.</p>
         <p>Strike an enemy from the FRONT or the SIDE and the bolt pierces by chain, then returns to you. Strike one from BEHIND and the bolt REFLECTS — attack again and again from the rear, breaker-style.</p>
-        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him. Captains and capital ships fire bursts, fans, beams, missiles and splitters. Beams cannot be parried — dodge them. Missiles can only be smashed, and they come in volleys of three.</p>
+        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him. Captains and capital ships fire bursts, fans, beams, missiles and splitters. Beams cannot be parried — dodge them. Missiles can only be smashed, and they come in volleys of three. The Death Star launches armoured brutes — crack them with chained bolts.</p>
         <p>A bolt that slips past you is harmless. A bolt that hits your body costs one life. If the formation reaches the front line, all is lost.</p>
         <p class="cw-center">MAY THE FORCE BE WITH YOU</p>
       </div></div>
@@ -271,6 +271,8 @@ let time = 0, waveClearT = 0, shake = 0, maxChain = 0;
 let dangerLevel = 0, warnT = 0, warned = false, hitstop = 0;
 let balls = [], particles = [], rings = [], flashes = [], pops = [];
 let shootT = 1.6;
+let spawnT = 3.5; // Death Star brute launcher timer
+let bossShootT = 2.2; // bosses fire on their own, faster clock - focus fire should hurt
 
 const player = { x: 0, targetX: 0, prevX: 0, speed: 0, swingT: 0, swingAnimT: 0, swingCd: 0, swingBufferT: 0, hurtT: 0, saberTrail: [] };
 const SWING_ANIM = 0.36; // swing animation duration (slower than v2.2's 0.24)
@@ -294,12 +296,12 @@ const SPRITES = [
   ["....XXX....","..XXXXXXX..",".XX.XXX.XX.",".XXXXXXXXX.","..XXXXXXX..",".X..X..X...","X....X....X"], // 7: droideka (shield)
 ];
 const KIND_SPRITE = { weaver: 4, diver: 5, orbiter: 6, shield: 7 };
-const KIND_COL = { weaver: '#e2e8f0', diver: '#fb923c', orbiter: '#c084fc', shield: '#94a3b8' };
+const KIND_COL = { weaver: '#e2e8f0', diver: '#fb923c', orbiter: '#c084fc', shield: '#94a3b8', tank: '#fbbf24' };
 const LIGHT_KINDS = ['normal', 'weaver', 'diver', 'orbiter'];
 function isBoss(u){ return u.kind === 'mid' || u.kind === 'big' || u.kind === 'super' || u.kind === 'vader'; }
 function unitCol(u){ return isBoss(u) ? (u.kind === 'mid' ? '#fb923c' : '#f87171') : (KIND_COL[u.kind] || ROW_COL[u.row]); }
 function buildWave(){
-  units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null; burstQueue = []; beam = null; missiles = []; missileQueue = [];
+  units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null; burstQueue = []; beam = null; missiles = []; missileQueue = []; spawnT = 3.5; bossShootT = 2.2;
   form = { fx: 0, fz: 0.02, dir: 1, speed: 0.05 + wave * 0.006 };
   shootT = 1.4;
   const occupied = new Set();
@@ -347,7 +349,7 @@ function buildWave(){
   if (wave >= 5){ convert(3, 2, 'weaver', 1, 30); convert(0, 2, 'diver', 3, 40); convert(6, 2, 'diver', 3, 40); }
   units.forEach(u => { u.alive = true; u.phase = (u.col * 1.73 + u.row * 2.39) % 6.283; if (u.shieldHp === undefined) u.shieldHp = 0; if (u.deflectT === undefined) u.deflectT = 0; if (!u.vTrail) u.vTrail = []; });
 }
-const KIND_W = { normal: 0.19, weaver: 0.19, diver: 0.21, orbiter: 0.18, shield: 0.22, mid: 0.30, big: 0.62, super: 1.12, vader: 0.37 };
+const KIND_W = { normal: 0.19, weaver: 0.19, diver: 0.21, orbiter: 0.18, shield: 0.22, tank: 0.24, mid: 0.30, big: 0.62, super: 1.12, vader: 0.37 };
 function unitBasePos(u){
   const x = form.fx + (u.col - (COLS - 1) / 2) * COL_DX;
   const z = form.fz + u.row * ROW_DZ + (u.rows - 1) * ROW_DZ / 2;
@@ -358,6 +360,7 @@ function unitBasePos(u){
 function unitPos(u){
   // base formation position + this kind's own movement pattern
   const b = unitBasePos(u), ph = u.phase || 0;
+  if (u.kind === 'tank') return { x: u.freeX, z: u.freeZ, wF: b.wF, dF: b.dF }; // Death Star brutes fly free
   let x = b.x, z = b.z;
   if (u.kind === 'weaver'){ x += Math.sin(time * 2.3 + ph) * 0.055; z += Math.sin(time * 3.2 + ph) * 0.012; }
   else if (u.kind === 'diver'){ const d = Math.pow(Math.max(0, Math.sin(time * 0.55 + ph)), 2); z += d * 0.115; x += Math.sin(time * 1.1 + ph) * 0.02; }
@@ -394,6 +397,17 @@ function pickShooter(){
   return pool[Math.floor(Math.random() * pool.length)];
 }
 let pendingShot = null; // { u, t } - the telegraph: this unit flashes before it fires
+function spawnTank(ds){
+  const alive = units.filter(u => u.kind === 'tank' && u.alive).length;
+  if (alive >= 3){ spawnT = 1.5; return; } // escort cap: check again soon
+  const p = unitPos(ds);
+  const bx = clamp(p.x + rand(-0.25, 0.25), -0.85, 0.85);
+  units.push({ kind: 'tank', col: 3, row: 0, rows: 1, hp: 6, maxHp: 6, pts: 50, alive: true, shieldHp: 0, flashT: 0, phase: rand(0, 6.28), baseX: bx, freeX: bx, freeZ: p.z + p.dF / 2 + 0.05, holdZ: 0.46 });
+  spawnT = rand(5.5, 7.5);
+  pop('BRUTE LAUNCHED!', '#fbbf24', true, 'warn');
+  burstAt(bx, p.z + p.dF / 2 + 0.05, '#fbbf24', 18, 1.3); ringAt(bx, p.z + p.dF / 2 + 0.05, '#fbbf24');
+  beep(196, 0.16, 'sawtooth', 0.045, 60);
+}
 function fireBallFrom(src, ang, xOff){
   if (!src || !src.alive) return;
   const p = unitPos(src);
@@ -544,6 +558,26 @@ function update(dt){
   } else if (shootT <= 0){
     shootT = rand(1.0, 1.9) * Math.max(0.45, 1 - (wave - 1) * 0.06);
     if (balls.length < maxBalls()){ const u = pickShooter(); if (u) pendingShot = { u, t: 0.45, pattern: pickPattern(u) }; }
+  }
+  // the Death Star keeps launching armoured brutes while it lives
+  const superU = units.find(u => u.kind === 'super' && u.alive);
+  if (superU){ spawnT -= dt; if (spawnT <= 0) spawnTank(superU); }
+  for (const u of units){
+    if (u.kind === 'tank' && u.alive){
+      u.freeZ = Math.min(u.holdZ, u.freeZ + 0.030 * dt); // advance, then hold mid-field as a wall
+      u.freeX = clamp(u.baseX + Math.sin(time * 0.8 + u.phase) * 0.12, -0.92, 0.92);
+    }
+  }
+  // bosses attack on their own faster timer, on top of the regular shooter cycle:
+  // standing still and focus-firing a boss should be dangerous
+  bossShootT -= dt;
+  if (bossShootT <= 0){
+    const bossPool = aliveUnits().filter(isBoss);
+    if (bossPool.length && !pendingShot){
+      const bu = bossPool[Math.floor(Math.random() * bossPool.length)];
+      pendingShot = { u: bu, t: 0.45, pattern: pickPattern(bu) };
+      bossShootT = rand(1.15, 1.6) * Math.max(0.7, 1 - (wave - 1) * 0.03);
+    } else bossShootT = 0.3; // telegraph slot busy or no boss: check again shortly
   }
   // burst follow-ups: quick pew-pew after the telegraphed first shot
   for (const q of burstQueue){
@@ -1171,6 +1205,7 @@ function drawInvader(u){
     if (u.kind === 'orbiter') drawProbeDroid(u, p, pr);
     else if (u.kind === 'shield') drawDroideka(u, p, pr);
     else if (u.kind === 'diver') drawTieShip(u, p, pr, 'bomber');
+    else if (u.kind === 'tank') drawTieShip(u, p, pr, 'bomber');
     else if (u.kind === 'weaver') drawTieShip(u, p, pr, 'fighter');
     else drawTieShip(u, p, pr, u.row === 0 ? 'bomber' : (u.row === 3 ? 'fighter' : 'ceptor'));
     if (u.maxHp >= 2){ // armour pips: how many more hits this one takes
@@ -1180,6 +1215,15 @@ function drawInvader(u){
         ctx.beginPath(); ctx.arc(pr.x + (i - (u.maxHp - 1) / 2) * pw, y0, 1.7 * pr.scale, 0, 6.283); ctx.fill();
       }
       ctx.globalAlpha = 1; ctx.shadowBlur = 9;
+    }
+    if (u.kind === 'tank'){ // brute armour: a thick amber double ring
+      ctx.save();
+      ctx.strokeStyle = '#fbbf24'; ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 10;
+      ctx.globalAlpha = 0.75 + 0.2 * Math.sin(time * 4 + (u.phase || 0)); ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, wPx * 0.62, 0, 6.283); ctx.stroke();
+      ctx.globalAlpha = 0.4; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, wPx * 0.72, 0, 6.283); ctx.stroke();
+      ctx.restore();
     }
     if (u.shieldHp > 0){
       ctx.globalAlpha = 0.55 + 0.2 * Math.sin(time * 5 + (u.phase || 0));
