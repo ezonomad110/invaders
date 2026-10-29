@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v4.0 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.1 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -67,7 +67,7 @@
         <p>MOVE with the LEFT STICK. SWING your lightsaber with the RIGHT BUTTON.</p>
         <p>Enemy bolts ricochet off the walls. Deflect them back! Every return builds that bolt's CHAIN — faster, stronger, and piercing one more enemy for every chain level.</p>
         <p>Strike an enemy from the FRONT or the SIDE and the bolt pierces by chain, then returns to you. Strike one from BEHIND and the bolt REFLECTS — attack again and again from the rear, breaker-style.</p>
-        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him.</p>
+        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him. Captains and capital ships fire in bursts and fans: keep moving.</p>
         <p>A bolt that slips past you is harmless. A bolt that hits your body costs one life. If the formation reaches the front line, all is lost.</p>
         <p class="cw-center">MAY THE FORCE BE WITH YOU</p>
       </div></div>
@@ -298,7 +298,7 @@ const LIGHT_KINDS = ['normal', 'weaver', 'diver', 'orbiter'];
 function isBoss(u){ return u.kind === 'mid' || u.kind === 'big' || u.kind === 'super' || u.kind === 'vader'; }
 function unitCol(u){ return isBoss(u) ? (u.kind === 'mid' ? '#fb923c' : '#f87171') : (KIND_COL[u.kind] || ROW_COL[u.row]); }
 function buildWave(){
-  units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null;
+  units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null; burstQueue = [];
   form = { fx: 0, fz: 0.02, dir: 1, speed: 0.05 + wave * 0.006 };
   shootT = 1.4;
   const occupied = new Set();
@@ -393,13 +393,37 @@ function pickShooter(){
   return pool[Math.floor(Math.random() * pool.length)];
 }
 let pendingShot = null; // { u, t } - the telegraph: this unit flashes before it fires
-function fireBallFrom(src){
+function fireBallFrom(src, ang, xOff){
   if (!src || !src.alive) return;
   const p = unitPos(src);
   const S = ballSpeed();
-  const ang = rand(0.35, 0.75) * (Math.random() < 0.5 ? -1 : 1); // diagonal so it pinballs off the walls
-  balls.push({ x: p.x, z: p.z + 0.04, vx: Math.sin(ang) * S, vz: Math.cos(ang) * S, chain: 0, pierce: 0, backCombo: 0, hitSet: new Set(), returned: false, resolved: false, trail: [] });
+  if (ang === undefined) ang = rand(0.35, 0.75) * (Math.random() < 0.5 ? -1 : 1); // diagonal so it pinballs off the walls
+  balls.push({ x: p.x + (xOff || 0), z: p.z + 0.04, vx: Math.sin(ang) * S, vz: Math.cos(ang) * S, chain: 0, pierce: 0, backCombo: 0, hitSet: new Set(), returned: false, resolved: false, trail: [] });
   blasterSound();
+}
+// Boss attack patterns (mid tier and up): BURST = a 3-round burst on one line,
+// SPREAD = a 3-way fan (the Death Star fires it from separate trench guns).
+let burstQueue = []; // { t, u, ang } follow-up shots of a burst
+function pickPattern(u){
+  if (!u || !isBoss(u)) return 'single';
+  const r = Math.random();
+  if (u.kind === 'super') return r < 0.35 ? 'burst' : (r < 0.80 ? 'spread' : 'single');
+  if (u.kind === 'big') return r < 0.40 ? 'burst' : (r < 0.75 ? 'spread' : 'single');
+  return r < 0.60 ? 'burst' : 'single'; // mid + Vader
+}
+function executePattern(u, pattern){
+  if (!u || !u.alive) return;
+  if (pattern === 'burst'){
+    const base = rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1);
+    fireBallFrom(u, base);
+    burstQueue.push({ t: 0.13, u, ang: base + 0.16 });
+    burstQueue.push({ t: 0.26, u, ang: base - 0.16 });
+  } else if (pattern === 'spread'){
+    const tilt = rand(-0.1, 0.1), p = unitPos(u);
+    [-0.42, 0, 0.42].forEach((o, i) => fireBallFrom(u, o + tilt, (i - 1) * p.wF * 0.45));
+  } else {
+    fireBallFrom(u);
+  }
 }
 function spawnEnemyBall(){ const u = pickShooter(); if (u) fireBallFrom(u); }
 function maxBalls(){ return Math.min(3 + Math.floor((wave - 1) / 2), 6); }
@@ -482,13 +506,25 @@ function update(dt){
   if (pendingShot){
     pendingShot.t -= dt;
     if (pendingShot.t <= 0){
-      const u = pendingShot.u; pendingShot = null;
-      if (balls.length < maxBalls() + 1) fireBallFrom(u.alive ? u : pickShooter());
+      const u = pendingShot.u, pat = pendingShot.pattern || 'single'; pendingShot = null;
+      if (balls.length < maxBalls() + 1){
+        if (u.alive) executePattern(u, pat);
+        else fireBallFrom(pickShooter());
+      }
     }
   } else if (shootT <= 0){
     shootT = rand(1.0, 1.9) * Math.max(0.45, 1 - (wave - 1) * 0.06);
-    if (balls.length < maxBalls()){ const u = pickShooter(); if (u) pendingShot = { u, t: 0.45 }; }
+    if (balls.length < maxBalls()){ const u = pickShooter(); if (u) pendingShot = { u, t: 0.45, pattern: pickPattern(u) }; }
   }
+  // burst follow-ups: quick pew-pew after the telegraphed first shot
+  for (const q of burstQueue){
+    q.t -= dt;
+    if (q.t <= 0 && !q.done){
+      q.done = true;
+      if (q.u.alive && balls.length < maxBalls() + 2) fireBallFrom(q.u, q.ang);
+    }
+  }
+  burstQueue = burstQueue.filter(q => !q.done && q.t > -0.5);
 
   // balls
   for (const b of balls){
