@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v3.4 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v3.5 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -126,7 +126,7 @@ function screenToFieldX(sx){ // inverse of proj at the player's depth
   return (sx - p.x) / p.half;
 }
 const PLAYER_Z = 0.93, FRONTLINE_Z = 0.80, WALL_X = 1.0;
-const VADER_TEST_MODE = true; // TEMP: Vader from EPISODE 1 while checking his swing trail - set false for release
+const VADER_TEST_MODE = false; // release: Vader on WAVE 4/7/10... (set true only for local swing checks)
 
 // ---------- audio ----------
 let AC = null, muted = false;
