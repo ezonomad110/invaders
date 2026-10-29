@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v4.3 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.4 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -67,7 +67,7 @@
         <p>MOVE with the LEFT STICK. SWING your lightsaber with the RIGHT BUTTON.</p>
         <p>Enemy bolts ricochet off the walls. Deflect them back! Every return builds that bolt's CHAIN — faster, stronger, and piercing one more enemy for every chain level.</p>
         <p>Strike an enemy from the FRONT or the SIDE and the bolt pierces by chain, then returns to you. Strike one from BEHIND and the bolt REFLECTS — attack again and again from the rear, breaker-style.</p>
-        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him. Captains and capital ships fire bursts, fans, beams, missiles, splitters and heavy bolts. Beams cannot be parried — dodge them. Missiles can only be smashed.</p>
+        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him. Captains and capital ships fire bursts, fans, beams, missiles, splitters and heavy bolts. Beams cannot be parried — dodge them. Missiles can only be smashed. A heavy bolt takes two swift strikes to turn back, and then it hits twice as hard.</p>
         <p>A bolt that slips past you is harmless. A bolt that hits your body costs one life. If the formation reaches the front line, all is lost.</p>
         <p class="cw-center">MAY THE FORCE BE WITH YOU</p>
       </div></div>
@@ -275,6 +275,8 @@ let shootT = 1.6;
 const player = { x: 0, targetX: 0, prevX: 0, speed: 0, swingT: 0, swingAnimT: 0, swingCd: 0, swingBufferT: 0, hurtT: 0, saberTrail: [] };
 const SWING_ANIM = 0.36; // swing animation duration (slower than v2.2's 0.24)
 const SWING_ACTIVE = 0.55; // swing + lingering afterimage both carry a hitbox
+let swingCount = 0; // increments per swing: heavy bolts register one hit per swing
+const HEAVY_WINDOW = 0.58; // time to land the 2nd strike on a heavy bolt (swing cycle is 0.42s: just barely)
 
 // ---------- invaders ----------
 // Formation lives in field coords. Anchor (fx, fz) moves sideways and steps closer.
@@ -411,9 +413,9 @@ let missileQueue = []; // { t, u } staggered extra launches for capital ships
 function pickPattern(u){
   if (!u || !isBoss(u)) return 'single';
   const r = Math.random();
-  if (u.kind === 'super') return r < 0.16 ? 'burst' : r < 0.38 ? 'spread' : r < 0.64 ? 'laser' : r < 0.76 ? 'missile' : r < 0.84 ? 'split' : r < 0.92 ? 'heavy' : 'single';
-  if (u.kind === 'big') return r < 0.20 ? 'burst' : r < 0.40 ? 'spread' : r < 0.60 ? 'laser' : r < 0.72 ? 'missile' : r < 0.82 ? 'split' : r < 0.90 ? 'heavy' : 'single';
-  return r < 0.45 ? 'burst' : r < 0.70 ? 'missile' : 'single'; // mid + Vader
+  if (u.kind === 'super') return r < 0.14 ? 'burst' : r < 0.32 ? 'spread' : r < 0.56 ? 'laser' : r < 0.74 ? 'missile' : r < 0.83 ? 'split' : r < 0.91 ? 'heavy' : 'single';
+  if (u.kind === 'big') return r < 0.18 ? 'burst' : r < 0.36 ? 'spread' : r < 0.54 ? 'laser' : r < 0.72 ? 'missile' : r < 0.82 ? 'split' : r < 0.90 ? 'heavy' : 'single';
+  return r < 0.40 ? 'burst' : r < 0.75 ? 'missile' : 'single'; // mid + Vader
 }
 function startBeam(u){
   if (beam || !u || !u.alive){ executePattern(u, 'burst'); return; }
@@ -443,7 +445,7 @@ function executePattern(u, pattern){
   if (pattern === 'heavy'){
     fireBallFrom(u);
     const b = balls[balls.length - 1];
-    if (b && !b.returned){ b.heavy = 2; b.vx *= 0.62; b.vz *= 0.62; pop('HEAVY BOLT!', '#fbbf24', false, 'warn'); }
+    if (b && !b.returned){ b.heavy = true; b.arm = 2; b.armT = 0; b.lastSwingId = -1; b.vx *= 0.62; b.vz *= 0.62; pop('HEAVY BOLT!', '#fbbf24', false, 'warn'); }
     return;
   }
   if (pattern === 'burst'){
@@ -583,6 +585,16 @@ function update(dt){
 
   // balls
   for (const b of balls){
+    // heavy bolt: the crack window runs out -> armour seals, full speed at the player
+    if (b.heavy && b.armT > 0){
+      b.armT -= dt;
+      if (b.armT <= 0 && b.arm === 1){
+        b.arm = 2; b.resolved = false;
+        if (b.stallVz) b.vz = b.stallVz;
+        pop('TOO LATE!', '#f87171', false, 'warn');
+        beep(220, 0.12, 'square', 0.04, -60);
+      }
+    }
     const S = Math.max(ballSpeed() + b.chain * 0.022, Math.hypot(b.vx, b.vz));
     b.trail.push({ x: b.x, z: b.z }); if (b.trail.length > 22) b.trail.shift();
     b.x += b.vx * dt; b.z += b.vz * dt;
@@ -590,7 +602,7 @@ function update(dt){
     if (b.x < -WALL_X + 0.03){ b.x = -WALL_X + 0.03; b.vx = Math.abs(b.vx); burstAt(b.x, b.z, '#67e8f9', 4, 0.6); beep(300, 0.04, 'square', 0.025); }
     if (b.x > WALL_X - 0.03){ b.x = WALL_X - 0.03; b.vx = -Math.abs(b.vx); burstAt(b.x, b.z, '#67e8f9', 4, 0.6); beep(300, 0.04, 'square', 0.025); }
     // far wall: a returned ball that misses everyone bounces back
-    if (b.z < 0.015 && b.vz < 0){ b.z = 0.015; b.vz = Math.abs(b.vz); if (b.hitSet) b.hitSet.clear(); ringAt(b.x, b.z, '#f472b6'); beep(340, 0.05, 'square', 0.03); }
+    if (b.z < 0.015 && b.vz < 0){ b.z = 0.015; b.vz = Math.abs(b.vz); if (b.hitSet) b.hitSet.clear(); if (b.heavy){ b.arm = 2; b.armT = 0; } ringAt(b.x, b.z, '#f472b6'); beep(340, 0.05, 'square', 0.03); }
 
     // a splitting bolt pops into three mid-flight (still returnable before it splits)
     if (b.split && !b.returned && b.z >= b.splitAt){
@@ -611,7 +623,7 @@ function update(dt){
       const p = unitPos(u);
       if (Math.abs(b.x - p.x) < p.wF / 2 + 0.03 && Math.abs(b.z - p.z) < p.dF / 2 + 0.026){
         if (b.hitSet && b.hitSet.has(u)) continue;
-        const dmg = b.returned ? ballPower(b.chain) : 1;
+        const dmg = b.returned ? ballPower(b.chain) * (b.heavy ? 2 : 1) : 1; // a turned heavy bolt hits TWICE as hard
         if (!b.returned){
           // an enemy ball touching its own side does nothing (it was just fired)
           continue;
@@ -628,6 +640,7 @@ function update(dt){
           b.vz = DS * 0.92; b.vx = rand(-0.3, 0.3) * DS;
           const dn = Math.hypot(b.vx, b.vz); b.vx *= DS / dn; b.vz *= DS / dn;
           b.z = p.z + p.dF / 2 + 0.03; b.resolved = false;
+          if (b.heavy){ b.arm = 2; b.armT = 0; }
           burstAt(p.x, p.z, '#ef4444', 14, 1.1); ringAt(p.x, p.z, '#ef4444');
           pop('DEFLECTED!', '#ef4444', true, 'vader');
           clashSound(2);
@@ -690,6 +703,7 @@ function update(dt){
           b.vz = Math.abs(S) * 0.88; b.vx = clamp(b.vx + (b.x - p.x) * 1.4, -S * 0.8, S * 0.8);
           const ns = Math.hypot(b.vx, b.vz); b.vx *= S / ns; b.vz *= S / ns;
           b.z = p.z + p.dF / 2 + 0.03;
+          if (b.heavy){ b.arm = 2; b.armT = 0; } // a heavy bolt coming back needs two fresh strikes
           if (b.hitSet) b.hitSet.clear();
         }
         break;
@@ -703,21 +717,37 @@ function update(dt){
     const dxp = b.x - player.x;
     if (b.vz > 0 && !b.resolved && b.z >= PLAYER_Z - 0.17 && b.z <= PLAYER_Z + 0.005){
       if (player.swingT > 0 && Math.abs(dxp) < 0.33){
-        b.resolved = true;
-        if (b.heavy > 0){
-          // HEAVY bolt: too dense to return. First hit shoves it back, second smashes it.
-          if (b.heavy === 2){
-            b.heavy = 1; b.vz = -Math.abs(b.vz) * 0.85; b.vx *= 0.35; b.z = PLAYER_Z - 0.06;
-            pop('CLANG!', '#fbbf24', false, 'hit');
-            burstAt(b.x, PLAYER_Z, '#fbbf24', 18, 1.4); ringAt(b.x, PLAYER_Z, '#fbbf24');
-            beep(1500, 0.07, 'square', 0.05, -500); clashSound(1);
-          } else {
-            b.z = 99; addScore(100);
-            pop('HEAVY DOWN!', '#fbbf24', true, 'hit');
-            burstAt(b.x, PLAYER_Z, '#fbbf24', 26, 1.7); ringAt(b.x, PLAYER_Z, '#fbbf24'); flashes.push({ col: '#fbbf24', t: 0 });
-            hitstop = Math.max(hitstop, 0.06); explodeSound(false);
+        if (b.heavy){
+          // HEAVY bolt: TWO strikes in quick succession or it does not turn.
+          // One hit per swing (the lingering afterimage must not double-count).
+          if (b.lastSwingId !== swingCount){
+            b.lastSwingId = swingCount;
+            if (b.arm === 2){
+              // 1st strike: crack the armour and stall the bolt mid-zone.
+              // The window is barely longer than one swing cycle: swing again NOW.
+              b.arm = 1; b.armT = HEAVY_WINDOW; b.stallVz = b.vz;
+              b.vz *= 0.10; b.vx *= 0.30; b.z = PLAYER_Z - 0.10;
+              pop('CLANG! ONE MORE!', '#fbbf24', true, 'hit');
+              burstAt(b.x, PLAYER_Z, '#fbbf24', 18, 1.4); ringAt(b.x, PLAYER_Z, '#fbbf24'); flashes.push({ col: '#fbbf24', t: 0 });
+              hitstop = Math.max(hitstop, 0.05);
+              beep(1500, 0.07, 'square', 0.05, -500); clashSound(1);
+            } else if (b.arm === 1 && b.armT > 0){
+              // 2nd strike in time: it turns - and hits enemies twice as hard
+              b.arm = 2; b.armT = 0; b.resolved = true;
+              b.chain++; b.returned = true; b.pierce = b.chain; b.backCombo = 0; if (b.hitSet) b.hitSet.clear();
+              if (b.chain > maxChain){ maxChain = b.chain; updateHud(); }
+              const S2 = ballSpeed() + b.chain * 0.022;
+              const q = player.swingAnimT > 0 ? 1 - player.swingAnimT / SWING_ANIM : 0.5;
+              const phi = clamp((dxp / 0.33) * 1.05 + (0.5 - q) * 1.05 + clamp(player.speed, -1.6, 1.6) * 0.10, -1.32, 1.32);
+              b.vz = -Math.cos(phi) * S2; b.vx = Math.sin(phi) * S2;
+              b.z = PLAYER_Z - 0.05;
+              pop('HEAVY RETURN!', '#fbbf24', true, 'hit');
+              burstAt(b.x, PLAYER_Z, '#fbbf24', 24, 1.6); ringAt(b.x, PLAYER_Z, '#fbbf24'); flashes.push({ col: '#fbbf24', t: 0 });
+              hitstop = Math.max(hitstop, 0.06); clashSound(b.chain + 1);
+            }
           }
         } else {
+        b.resolved = true;
         // RETURN! chain grows for this ball
         b.chain++; b.returned = true; b.pierce = b.chain; b.backCombo = 0; if (b.hitSet) b.hitSet.clear();
         if (b.chain > maxChain){ maxChain = b.chain; updateHud(); }
@@ -1367,7 +1397,7 @@ function drawBall(b){
   // ground marker so the player can judge where it will arrive
   ctx.save(); ctx.strokeStyle = hexA(col, 0.65); ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.ellipse(pr.x, proj(b.x, b.z).y + 16 * pr.scale, 10 * pr.scale, 3.6 * pr.scale, 0, 0, 6.283); ctx.stroke(); ctx.restore();
-  const r = 6.4 * pr.scale + Math.min(3, b.chain * 0.3) + (b.split ? 2.2 * pr.scale : 0) + (b.heavy > 0 ? 3.6 * pr.scale : 0);
+  const r = 6.4 * pr.scale + Math.min(3, b.chain * 0.3) + (b.split ? 2.2 * pr.scale : 0) + (b.heavy ? 3.6 * pr.scale : 0);
   ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 18;
   const g = ctx.createRadialGradient(pr.x - 2, pr.y - 2, 0, pr.x, pr.y, r + 1);
   g.addColorStop(0, '#ffffff'); g.addColorStop(0.55, hexA(col, 0.95)); g.addColorStop(1, 'rgba(2,6,23,0.9)');
@@ -1377,17 +1407,22 @@ function drawBall(b){
     ctx.globalAlpha = 0.65 + 0.35 * Math.sin(time * 10);
     ctx.beginPath(); ctx.arc(pr.x, pr.y, r * (1.3 + 0.12 * Math.sin(time * 10)), 0, 6.283); ctx.stroke(); ctx.restore();
   }
-  if (b.heavy > 0){ // heavy bolt: armoured shell, cracks after the first hit
+  if (b.heavy){ // heavy bolt: armoured shell, cracks after the first hit
     ctx.save(); ctx.strokeStyle = '#c9d2e0'; ctx.shadowColor = '#94a3b8'; ctx.shadowBlur = 8; ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.arc(pr.x, pr.y, r * 1.02, 0, 6.283); ctx.stroke();
     ctx.fillStyle = '#fb923c'; ctx.shadowColor = '#fb923c'; ctx.shadowBlur = 10;
     ctx.beginPath(); ctx.arc(pr.x, pr.y, r * 0.34, 0, 6.283); ctx.fill();
-    if (b.heavy === 1){
+    if (b.arm === 1){
       ctx.strokeStyle = 'rgba(10,14,24,.8)'; ctx.lineWidth = 1.3; ctx.shadowBlur = 0;
       ctx.beginPath(); ctx.moveTo(pr.x - r * 0.7, pr.y - r * 0.4); ctx.lineTo(pr.x - r * 0.1, pr.y + r * 0.1); ctx.lineTo(pr.x - r * 0.5, pr.y + r * 0.7); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(pr.x + r * 0.6, pr.y - r * 0.6); ctx.lineTo(pr.x + r * 0.15, pr.y); ctx.lineTo(pr.x + r * 0.55, pr.y + r * 0.5); ctx.stroke();
     }
     ctx.restore();
+  }
+  if (b.heavy && b.armT > 0){ // the second-strike window, draining fast
+    ctx.save(); ctx.strokeStyle = b.armT < 0.2 ? '#ef4444' : '#fbbf24'; ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 10; ctx.lineWidth = 2.2;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, r * (0.9 + 1.1 * (1 - b.armT / HEAVY_WINDOW)), -1.57, -1.57 + 6.283 * (b.armT / HEAVY_WINDOW)); ctx.stroke(); ctx.restore();
   }
   if (b.chain >= 1){ ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(12 * pr.scale + 4)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('×' + b.chain, pr.x, pr.y - r - 6); ctx.restore(); }
   if ((b.backCombo || 0) >= 2){ ctx.save(); ctx.shadowColor = '#facc15'; ctx.shadowBlur = 8; ctx.fillStyle = '#facc15'; ctx.font = `bold ${Math.round(10 * pr.scale + 3)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('BACK x' + b.backCombo, pr.x, pr.y + r + 13 * pr.scale); ctx.restore(); }
@@ -1455,6 +1490,7 @@ function loop(now){
 // (The old one-finger drag / swipe-up controls were dropped: poor operability.)
 function executeSwing(){
   player.swingT = SWING_ACTIVE; player.swingAnimT = SWING_ANIM; player.swingCd = 0.42; player.swingBufferT = 0;
+  swingCount++;
   swingSound();
 }
 function doSwing(){
