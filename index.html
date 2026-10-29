@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v4.1 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.2 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -67,7 +67,7 @@
         <p>MOVE with the LEFT STICK. SWING your lightsaber with the RIGHT BUTTON.</p>
         <p>Enemy bolts ricochet off the walls. Deflect them back! Every return builds that bolt's CHAIN — faster, stronger, and piercing one more enemy for every chain level.</p>
         <p>Strike an enemy from the FRONT or the SIDE and the bolt pierces by chain, then returns to you. Strike one from BEHIND and the bolt REFLECTS — attack again and again from the rear, breaker-style.</p>
-        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him. Captains and capital ships fire in bursts and fans: keep moving.</p>
+        <p>Bosses hide inside the formation. Crack their cores. A droideka's shield must be stripped before its hull takes damage. And beware the Dark Lord himself: weak bolts he will swat back at you. Only a blazing chain — or a strike from behind — can touch him. Captains and capital ships fire bursts, fans, beams, missiles, splitters and heavy bolts. Beams cannot be parried — dodge them. Missiles can only be smashed.</p>
         <p>A bolt that slips past you is harmless. A bolt that hits your body costs one life. If the formation reaches the front line, all is lost.</p>
         <p class="cw-center">MAY THE FORCE BE WITH YOU</p>
       </div></div>
@@ -298,7 +298,7 @@ const LIGHT_KINDS = ['normal', 'weaver', 'diver', 'orbiter'];
 function isBoss(u){ return u.kind === 'mid' || u.kind === 'big' || u.kind === 'super' || u.kind === 'vader'; }
 function unitCol(u){ return isBoss(u) ? (u.kind === 'mid' ? '#fb923c' : '#f87171') : (KIND_COL[u.kind] || ROW_COL[u.row]); }
 function buildWave(){
-  units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null; burstQueue = [];
+  units = []; balls = []; particles = []; rings = []; pops = []; pendingShot = null; burstQueue = []; beam = null; missiles = []; missileQueue = [];
   form = { fx: 0, fz: 0.02, dir: 1, speed: 0.05 + wave * 0.006 };
   shootT = 1.4;
   const occupied = new Set();
@@ -404,15 +404,47 @@ function fireBallFrom(src, ang, xOff){
 // Boss attack patterns (mid tier and up): BURST = a 3-round burst on one line,
 // SPREAD = a 3-way fan (the Death Star fires it from separate trench guns).
 let burstQueue = []; // { t, u, ang } follow-up shots of a burst
+let beam = null; // { u, x, phase: 'warn'|'fire', t, col } - a beam you DODGE, never parry
+let missiles = []; // homing missiles: cannot be returned, only smashed out of the sky
+let missileQueue = []; // { t, u } staggered extra launches for capital ships
 function pickPattern(u){
   if (!u || !isBoss(u)) return 'single';
   const r = Math.random();
-  if (u.kind === 'super') return r < 0.35 ? 'burst' : (r < 0.80 ? 'spread' : 'single');
-  if (u.kind === 'big') return r < 0.40 ? 'burst' : (r < 0.75 ? 'spread' : 'single');
-  return r < 0.60 ? 'burst' : 'single'; // mid + Vader
+  if (u.kind === 'super') return r < 0.16 ? 'burst' : r < 0.38 ? 'spread' : r < 0.64 ? 'laser' : r < 0.76 ? 'missile' : r < 0.84 ? 'split' : r < 0.92 ? 'heavy' : 'single';
+  if (u.kind === 'big') return r < 0.20 ? 'burst' : r < 0.40 ? 'spread' : r < 0.60 ? 'laser' : r < 0.72 ? 'missile' : r < 0.82 ? 'split' : r < 0.90 ? 'heavy' : 'single';
+  return r < 0.45 ? 'burst' : r < 0.70 ? 'missile' : 'single'; // mid + Vader
+}
+function startBeam(u){
+  if (beam || !u || !u.alive){ executePattern(u, 'burst'); return; }
+  beam = { u, x: unitPos(u).x, phase: 'warn', t: 0.6, col: u.kind === 'super' ? '#4ade80' : '#ef4444' };
+  beep(1150, 0.1, 'square', 0.03, 500);
+}
+function launchMissile(u){
+  if (!u || !u.alive) return;
+  const p = unitPos(u);
+  missiles.push({ x: p.x, z: p.z + 0.05, vx: rand(-0.08, 0.08), vz: 0.24, spd: 0.24, fuel: 4.5, smokeT: 0, trail: [] });
+  beep(480, 0.16, 'square', 0.032, 520);
 }
 function executePattern(u, pattern){
   if (!u || !u.alive) return;
+  if (pattern === 'laser'){ startBeam(u); return; }
+  if (pattern === 'missile'){
+    launchMissile(u);
+    if (u.kind === 'big' || u.kind === 'super') missileQueue.push({ t: 0.28, u });
+    return;
+  }
+  if (pattern === 'split'){
+    fireBallFrom(u);
+    const b = balls[balls.length - 1];
+    if (b && !b.returned){ b.split = true; b.splitAt = b.z + 0.34; pop('SPLITTER!', '#c084fc', false, 'warn'); }
+    return;
+  }
+  if (pattern === 'heavy'){
+    fireBallFrom(u);
+    const b = balls[balls.length - 1];
+    if (b && !b.returned){ b.heavy = 2; b.vx *= 0.62; b.vz *= 0.62; pop('HEAVY BOLT!', '#fbbf24', false, 'warn'); }
+    return;
+  }
   if (pattern === 'burst'){
     const base = rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1);
     fireBallFrom(u, base);
@@ -525,6 +557,28 @@ function update(dt){
     }
   }
   burstQueue = burstQueue.filter(q => !q.done && q.t > -0.5);
+  // staggered missile launches
+  for (const q of missileQueue){ q.t -= dt; if (q.t <= 0 && !q.done){ q.done = true; launchMissile(q.u); } }
+  missileQueue = missileQueue.filter(q => !q.done);
+  // laser beam lifecycle: warn (tracks the boss) -> fire (locked, dodge it!)
+  if (beam){
+    if (!beam.u.alive) beam = null;
+    else {
+      beam.t -= dt;
+      if (beam.phase === 'warn'){
+        beam.x = unitPos(beam.u).x;
+        if (beam.t <= 0){
+          beam.phase = 'fire'; beam.t = 0.7;
+          beep(150, 0.5, 'sawtooth', 0.055, -70); beep(1200, 0.3, 'square', 0.02, -500);
+        }
+      } else {
+        shake = Math.max(shake, 0.055);
+        if (Math.random() < 0.75) burstAt(beam.x + rand(-0.05, 0.05), 1.0, beam.col, 2, 1.1);
+        if (Math.abs(player.x - beam.x) < 0.085){ damage(); if (state !== 'playing') return; }
+        if (beam.t <= 0) beam = null;
+      }
+    }
+  }
 
   // balls
   for (const b of balls){
@@ -536,6 +590,19 @@ function update(dt){
     if (b.x > WALL_X - 0.03){ b.x = WALL_X - 0.03; b.vx = -Math.abs(b.vx); burstAt(b.x, b.z, '#67e8f9', 4, 0.6); beep(300, 0.04, 'square', 0.025); }
     // far wall: a returned ball that misses everyone bounces back
     if (b.z < 0.015 && b.vz < 0){ b.z = 0.015; b.vz = Math.abs(b.vz); if (b.hitSet) b.hitSet.clear(); ringAt(b.x, b.z, '#f472b6'); beep(340, 0.05, 'square', 0.03); }
+
+    // a splitting bolt pops into three mid-flight (still returnable before it splits)
+    if (b.split && !b.returned && b.z >= b.splitAt){
+      b.split = false; b.resolved = true;
+      const sp = Math.hypot(b.vx, b.vz), baseA = Math.atan2(b.vx, b.vz), sx = b.x, sz = b.z;
+      b.z = 99; // parent consumed
+      for (const off of [-0.38, 0, 0.38]){
+        const a = baseA + off;
+        balls.push({ x: sx, z: sz, vx: Math.sin(a) * sp, vz: Math.cos(a) * sp, chain: 0, pierce: 0, backCombo: 0, hitSet: new Set(), returned: false, resolved: false, trail: [] });
+      }
+      burstAt(sx, sz, '#c084fc', 18, 1.4); ringAt(sx, sz, '#c084fc'); flashes.push({ col: '#c084fc', t: 0 });
+      beep(880, 0.09, 'square', 0.04, -260);
+    }
 
     // invader collision (only matters while travelling, either direction)
     for (const u of aliveUnits()){
@@ -636,6 +703,20 @@ function update(dt){
     if (b.vz > 0 && !b.resolved && b.z >= PLAYER_Z - 0.17 && b.z <= PLAYER_Z + 0.005){
       if (player.swingT > 0 && Math.abs(dxp) < 0.33){
         b.resolved = true;
+        if (b.heavy > 0){
+          // HEAVY bolt: too dense to return. First hit shoves it back, second smashes it.
+          if (b.heavy === 2){
+            b.heavy = 1; b.vz = -Math.abs(b.vz) * 0.85; b.vx *= 0.35; b.z = PLAYER_Z - 0.06;
+            pop('CLANG!', '#fbbf24', false, 'hit');
+            burstAt(b.x, PLAYER_Z, '#fbbf24', 18, 1.4); ringAt(b.x, PLAYER_Z, '#fbbf24');
+            beep(1500, 0.07, 'square', 0.05, -500); clashSound(1);
+          } else {
+            b.z = 99; addScore(100);
+            pop('HEAVY DOWN!', '#fbbf24', true, 'hit');
+            burstAt(b.x, PLAYER_Z, '#fbbf24', 26, 1.7); ringAt(b.x, PLAYER_Z, '#fbbf24'); flashes.push({ col: '#fbbf24', t: 0 });
+            hitstop = Math.max(hitstop, 0.06); explodeSound(false);
+          }
+        } else {
         // RETURN! chain grows for this ball
         b.chain++; b.returned = true; b.pierce = b.chain; b.backCombo = 0; if (b.hitSet) b.hitSet.clear();
         if (b.chain > maxChain){ maxChain = b.chain; updateHud(); }
@@ -651,6 +732,7 @@ function update(dt){
         flashes.push({ col: chainColor(b.chain), t: 0 });
         if (b.chain >= 2) pop(b.chain + ' CHAIN!', chainColor(b.chain), b.chain >= 4, 'chain');
         clashSound(b.chain);
+        }
       }
     }
     // past the saber zone unreturned: body hit or slip past (safe)
@@ -673,6 +755,41 @@ function update(dt){
     }
     return b.z < 90;
   });
+
+  // homing missiles: they steer at the player and can only be smashed, never returned
+  for (const m of missiles){
+    m.fuel -= dt;
+    m.trail.push({ x: m.x, z: m.z }); if (m.trail.length > 16) m.trail.shift();
+    const want = Math.atan2(player.x - m.x, PLAYER_Z - m.z);
+    let cur = Math.atan2(m.vx, m.vz);
+    let diff = want - cur;
+    while (diff > Math.PI) diff -= 6.283; while (diff < -Math.PI) diff += 6.283;
+    cur += clamp(diff, -2.4 * dt, 2.4 * dt);
+    m.spd = Math.min(0.46 + wave * 0.008, m.spd + 0.55 * dt);
+    m.vx = Math.sin(cur) * m.spd; m.vz = Math.cos(cur) * m.spd;
+    m.x = clamp(m.x + m.vx * dt, -0.97, 0.97); m.z += m.vz * dt;
+    m.smokeT -= dt;
+    if (m.smokeT <= 0){ m.smokeT = 0.05; burstAt(m.x, m.z, '#94a3b8', 1, 0.35); }
+    const mdx = m.x - player.x;
+    if (player.swingT > 0 && m.z >= PLAYER_Z - 0.17 && m.z <= PLAYER_Z + 0.005 && Math.abs(mdx) < 0.33){
+      m.fuel = -99; addScore(50);
+      pop('MISSILE DOWN!', '#fbbf24', false, 'hit');
+      burstAt(m.x, m.z, '#fb923c', 22, 1.5); ringAt(m.x, m.z, '#fb923c'); flashes.push({ col: '#fb923c', t: 0 });
+      clashSound(2); explodeSound(false);
+      continue;
+    }
+    if (Math.abs(mdx) < 0.105 && m.z >= PLAYER_Z - 0.02 && m.z <= PLAYER_Z + 0.06){
+      m.fuel = -99;
+      burstAt(m.x, PLAYER_Z, '#fb923c', 20, 1.4);
+      damage(); if (state !== 'playing') return;
+      continue;
+    }
+    if (m.fuel <= 0){ // out of fuel: harmless self-destruct
+      burstAt(m.x, m.z, '#fb923c', 16, 1.2); ringAt(m.x, m.z, '#fb923c');
+      beep(300, 0.1, 'square', 0.03, -120);
+    }
+  }
+  missiles = missiles.filter(m => m.fuel > 0 && m.z < 1.1 && m.z > -0.1);
 }
 
 // ---------- drawing ----------
@@ -1185,6 +1302,55 @@ function drawCharacter(){
   ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(txp, typ); ctx.stroke();
   ctx.restore();
 }
+
+function drawBeam(){
+  if (!beam || !beam.u.alive) return;
+  const p = unitPos(beam.u);
+  const top = proj(beam.x, p.z + p.dF / 2 + 0.02), bot = proj(beam.x, 1.03);
+  ctx.save();
+  if (beam.phase === 'warn'){
+    ctx.globalAlpha = 0.35 + 0.3 * Math.sin(time * 30);
+    ctx.strokeStyle = beam.col; ctx.lineWidth = 1.6; ctx.setLineDash([5, 6]);
+    ctx.beginPath(); ctx.moveTo(top.x, top.y); ctx.lineTo(bot.x, bot.y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.ellipse(bot.x, bot.y - 4, 12 * bot.scale + 4, 4.4 * bot.scale, 0, 0, 6.283); ctx.stroke();
+  } else {
+    const wTop = 2.2 * top.scale + 1, wBot = 15 * bot.scale + 5;
+    const poly = (w1, w2) => { ctx.beginPath(); ctx.moveTo(top.x - w1, top.y); ctx.lineTo(top.x + w1, top.y); ctx.lineTo(bot.x + w2, bot.y); ctx.lineTo(bot.x - w2, bot.y); ctx.closePath(); };
+    ctx.shadowColor = beam.col; ctx.shadowBlur = 26;
+    ctx.globalAlpha = 0.30; ctx.fillStyle = beam.col; poly(wTop * 2.4, wBot * 2.4); ctx.fill();
+    ctx.globalAlpha = 0.75; poly(wTop * 1.3, wBot * 1.3); ctx.fill();
+    ctx.shadowBlur = 12; ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; poly(wTop * 0.5, wBot * 0.45); ctx.fill();
+    ctx.beginPath(); ctx.arc(top.x, top.y, wBot * 0.5, 0, 6.283); ctx.fillStyle = beam.col; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(bot.x, bot.y - 3, wBot * 1.15, wBot * 0.34, 0, 0, 6.283); ctx.globalAlpha = 0.85; ctx.fill();
+  }
+  ctx.restore();
+}
+function drawMissile(m){
+  m.trail.forEach((t, i) => {
+    const k = i / Math.max(1, m.trail.length), pp = proj(t.x, t.z);
+    ctx.globalAlpha = k * 0.30; ctx.fillStyle = '#94a3b8';
+    ctx.beginPath(); ctx.arc(pp.x, pp.y, (1.5 + 4.5 * k) * pp.scale, 0, 6.283); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  const pr = proj(m.x, m.z);
+  const ang = Math.atan2(m.vx * pr.half, -(m.vz * pr.half * 0.55));
+  ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(ang); ctx.scale(pr.scale, pr.scale);
+  ctx.fillStyle = '#fb923c'; ctx.shadowColor = '#fb923c'; ctx.shadowBlur = 10;
+  const fl = 5 + Math.random() * 3.5;
+  ctx.beginPath(); ctx.moveTo(-2.2, 8); ctx.lineTo(0, 8 + fl); ctx.lineTo(2.2, 8); ctx.closePath(); ctx.fill();
+  const bg2 = ctx.createLinearGradient(-3.4, 0, 3.4, 0);
+  bg2.addColorStop(0, '#79849a'); bg2.addColorStop(0.5, '#eef1f6'); bg2.addColorStop(1, '#79849a');
+  ctx.shadowBlur = 0; ctx.fillStyle = bg2;
+  ctx.beginPath(); ctx.moveTo(-3.4, -2); ctx.lineTo(0, -9); ctx.lineTo(3.4, -2); ctx.lineTo(3.4, 8); ctx.lineTo(-3.4, 8); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(-3.4, -2); ctx.lineTo(0, -9); ctx.lineTo(3.4, -2); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-3.4, 4); ctx.lineTo(-6.4, 9); ctx.lineTo(-3.4, 9); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(3.4, 4); ctx.lineTo(6.4, 9); ctx.lineTo(3.4, 9); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 16);
+  ctx.fillStyle = '#ff3131'; ctx.shadowColor = '#ff3131'; ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.arc(0, 1, 1.7, 0, 6.283); ctx.fill();
+  ctx.restore();
+}
+
 function drawBall(b){
   // ribbon trail (grows / recolours with chain - Luminous heat style)
   const col = chainColor(b.chain);
@@ -1200,11 +1366,28 @@ function drawBall(b){
   // ground marker so the player can judge where it will arrive
   ctx.save(); ctx.strokeStyle = hexA(col, 0.65); ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.ellipse(pr.x, proj(b.x, b.z).y + 16 * pr.scale, 10 * pr.scale, 3.6 * pr.scale, 0, 0, 6.283); ctx.stroke(); ctx.restore();
-  const r = 6.4 * pr.scale + Math.min(3, b.chain * 0.3);
+  const r = 6.4 * pr.scale + Math.min(3, b.chain * 0.3) + (b.split ? 2.2 * pr.scale : 0) + (b.heavy > 0 ? 3.6 * pr.scale : 0);
   ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 18;
   const g = ctx.createRadialGradient(pr.x - 2, pr.y - 2, 0, pr.x, pr.y, r + 1);
   g.addColorStop(0, '#ffffff'); g.addColorStop(0.55, hexA(col, 0.95)); g.addColorStop(1, 'rgba(2,6,23,0.9)');
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pr.x, pr.y, r, 0, 6.283); ctx.fill(); ctx.restore();
+  if (b.split){ // splitter: pulsing violet shell about to burst into three
+    ctx.save(); ctx.strokeStyle = '#c084fc'; ctx.shadowColor = '#c084fc'; ctx.shadowBlur = 12; ctx.lineWidth = 1.8;
+    ctx.globalAlpha = 0.65 + 0.35 * Math.sin(time * 10);
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, r * (1.3 + 0.12 * Math.sin(time * 10)), 0, 6.283); ctx.stroke(); ctx.restore();
+  }
+  if (b.heavy > 0){ // heavy bolt: armoured shell, cracks after the first hit
+    ctx.save(); ctx.strokeStyle = '#c9d2e0'; ctx.shadowColor = '#94a3b8'; ctx.shadowBlur = 8; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, r * 1.02, 0, 6.283); ctx.stroke();
+    ctx.fillStyle = '#fb923c'; ctx.shadowColor = '#fb923c'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, r * 0.34, 0, 6.283); ctx.fill();
+    if (b.heavy === 1){
+      ctx.strokeStyle = 'rgba(10,14,24,.8)'; ctx.lineWidth = 1.3; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.moveTo(pr.x - r * 0.7, pr.y - r * 0.4); ctx.lineTo(pr.x - r * 0.1, pr.y + r * 0.1); ctx.lineTo(pr.x - r * 0.5, pr.y + r * 0.7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pr.x + r * 0.6, pr.y - r * 0.6); ctx.lineTo(pr.x + r * 0.15, pr.y); ctx.lineTo(pr.x + r * 0.55, pr.y + r * 0.5); ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (b.chain >= 1){ ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(12 * pr.scale + 4)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('×' + b.chain, pr.x, pr.y - r - 6); ctx.restore(); }
   if ((b.backCombo || 0) >= 2){ ctx.save(); ctx.shadowColor = '#facc15'; ctx.shadowBlur = 8; ctx.fillStyle = '#facc15'; ctx.font = `bold ${Math.round(10 * pr.scale + 3)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('BACK x' + b.backCombo, pr.x, pr.y + r + 13 * pr.scale); ctx.restore(); }
 }
@@ -1223,6 +1406,8 @@ function draw(){
   // invaders far -> near (painter's order by z)
   aliveUnits().slice().sort((a, b) => unitPos(a).z - unitPos(b).z).forEach(drawInvader);
   balls.forEach(drawBall);
+  drawBeam();
+  missiles.forEach(drawMissile);
   drawCharacter();
   for (const p of particles){ ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.col; ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
   ctx.globalAlpha = 1;
