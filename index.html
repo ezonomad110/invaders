@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v4.6 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.7 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -309,24 +309,24 @@ function buildWave(){
   if (wave % 6 === 0 || (DS_TEST_MODE && wave === 1)){
     // SUPER boss: an executor-class giant spanning cols 1..5, rows 0..1
     for (let r = 0; r <= 1; r++) for (let c = 1; c <= 5; c++) occupied.add(key(c, r));
-    units.push({ kind: 'super', col: 3, row: 0, rows: 2, wCells: 5, hp: 26 + wave * 3, maxHp: 26 + wave * 3, pts: 1500, flashT: 0 });
+    units.push({ kind: 'super', col: 3, row: 0, rows: 2, wCells: 5, hp: 18 + wave * 2, maxHp: 18 + wave * 2, pts: 1500, flashT: 0 });
   } else if (wave % 3 === 0 || (TIE_TEST_MODE && wave === 1)){
     // big boss: spans cols 2..4, rows 0..1
     for (let r = 0; r <= 1; r++) for (let c = 2; c <= 4; c++) occupied.add(key(c, r));
-    units.push({ kind: 'big', col: 3, row: 0, rows: 2, wCells: 3, hp: 14 + wave * 2, maxHp: 14 + wave * 2, pts: 500, flashT: 0 });
+    units.push({ kind: 'big', col: 3, row: 0, rows: 2, wCells: 3, hp: 10 + wave, maxHp: 10 + wave, pts: 500, flashT: 0 });
   } else {
     // mid boss: centre column, rows 0..1 (tall)
     occupied.add(key(3, 0)); occupied.add(key(3, 1));
     if (VADER_TEST_MODE || (wave >= 4 && wave % 3 === 1)){
       // THE DARK LORD: deflects weak bolts back at you (see collision rules)
-      units.push({ kind: 'vader', col: 3, row: 0, rows: 2, wCells: 1, hp: 12 + wave, maxHp: 12 + wave, pts: 800, flashT: 0, deflectT: 0 });
+      units.push({ kind: 'vader', col: 3, row: 0, rows: 2, wCells: 1, hp: 10 + wave, maxHp: 10 + wave, pts: 800, flashT: 0, deflectT: 0 });
     } else {
-      units.push({ kind: 'mid', col: 3, row: 0, rows: 2, wCells: 1, hp: 6 + wave, maxHp: 6 + wave, pts: 200, flashT: 0 });
+      units.push({ kind: 'mid', col: 3, row: 0, rows: 2, wCells: 1, hp: 5 + wave, maxHp: 5 + wave, pts: 200, flashT: 0 });
     }
     if (wave >= 4){ // side mid-bosses join in later waves
       occupied.add(key(0, 0)); occupied.add(key(6, 0));
-      units.push({ kind: 'mid', col: 0, row: 0, rows: 1, wCells: 1, hp: 6 + wave, maxHp: 6 + wave, pts: 200, flashT: 0 });
-      units.push({ kind: 'mid', col: 6, row: 0, rows: 1, wCells: 1, hp: 6 + wave, maxHp: 6 + wave, pts: 200, flashT: 0 });
+      units.push({ kind: 'mid', col: 0, row: 0, rows: 1, wCells: 1, hp: 5 + wave, maxHp: 5 + wave, pts: 200, flashT: 0 });
+      units.push({ kind: 'mid', col: 6, row: 0, rows: 1, wCells: 1, hp: 5 + wave, maxHp: 5 + wave, pts: 200, flashT: 0 });
     }
   }
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++){
@@ -366,6 +366,7 @@ function unitPos(u){
   else if (u.kind === 'diver'){ const d = Math.pow(Math.max(0, Math.sin(time * 0.55 + ph)), 2); z += d * 0.115; x += Math.sin(time * 1.1 + ph) * 0.02; }
   else if (u.kind === 'orbiter'){ x += Math.cos(time * 1.6 + ph) * 0.068; z += Math.sin(time * 1.6 + ph) * 0.046; }
   else if (u.kind === 'super'){ x += Math.sin(time * 0.35 + ph) * 0.03; }
+  if (isBoss(u)) z = Math.min(z, FRONTLINE_Z - 0.05 - b.dF / 2); // bosses press close, but never cross the line
   return { x, z, wF: b.wF, dF: b.dF };
 }
 function aliveUnits(){ return units.filter(u => u.alive); }
@@ -402,7 +403,7 @@ function spawnTank(ds){
   if (alive >= 3){ spawnT = 1.5; return; } // escort cap: check again soon
   const p = unitPos(ds);
   const bx = clamp(p.x + rand(-0.25, 0.25), -0.85, 0.85);
-  units.push({ kind: 'tank', col: 3, row: 0, rows: 1, hp: 6, maxHp: 6, pts: 50, alive: true, shieldHp: 0, flashT: 0, phase: rand(0, 6.28), baseX: bx, freeX: bx, freeZ: p.z + p.dF / 2 + 0.05, holdZ: 0.46 });
+  units.push({ kind: 'tank', col: 3, row: 0, rows: 1, hp: 5, maxHp: 5, pts: 50, alive: true, shieldHp: 0, flashT: 0, phase: rand(0, 6.28), baseX: bx, freeX: bx, freeZ: p.z + p.dF / 2 + 0.05, holdZ: 0.46 });
   spawnT = rand(5.5, 7.5);
   pop('BRUTE LAUNCHED!', '#fbbf24', true, 'warn');
   burstAt(bx, p.z + p.dF / 2 + 0.05, '#fbbf24', 18, 1.3); ringAt(bx, p.z + p.dF / 2 + 0.05, '#fbbf24');
@@ -532,7 +533,7 @@ function update(dt){
   const speedBoost = 1 + (units.length - alive.length) / units.length * 1.3;
   form.fx += form.dir * form.speed * speedBoost * dt;
   let minX = 1e9, maxX = -1e9, maxZ = -1e9;
-  alive.forEach(u => { const p = unitBasePos(u); minX = Math.min(minX, p.x - p.wF / 2); maxX = Math.max(maxX, p.x + p.wF / 2); maxZ = Math.max(maxZ, p.z + p.dF / 2); if (u.flashT > 0) u.flashT -= dt; if (u.deflectT > 0) u.deflectT -= dt; });
+  alive.forEach(u => { const p = unitBasePos(u); minX = Math.min(minX, p.x - p.wF / 2); maxX = Math.max(maxX, p.x + p.wF / 2); if (!isBoss(u)) maxZ = Math.max(maxZ, p.z + p.dF / 2); if (u.flashT > 0) u.flashT -= dt; if (u.deflectT > 0) u.deflectT -= dt; });
   if (minX < -0.97 && form.dir < 0){ form.dir = 1; form.fz += 0.028; }
   if (maxX > 0.97 && form.dir > 0){ form.dir = -1; form.fz += 0.028; }
   if (maxZ >= FRONTLINE_Z){ gameOver(); return; }
