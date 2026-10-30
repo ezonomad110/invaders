@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>SABER BREAKER v4.8 - Luminous Invader Breaker</title>
+<title>SABER BREAKER v4.9 - Luminous Invader Breaker</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#05010f;overflow:hidden}
@@ -277,6 +277,151 @@ let bossShootT = 2.2; // bosses fire on their own, faster clock - focus fire sho
 const player = { x: 0, targetX: 0, prevX: 0, speed: 0, swingT: 0, swingAnimT: 0, swingCd: 0, swingBufferT: 0, hurtT: 0, saberTrail: [] };
 const SWING_ANIM = 0.36; // swing animation duration (slower than v2.2's 0.24)
 const SWING_ACTIVE = 0.55; // swing + lingering afterimage both carry a hitbox
+
+
+// ---------- BGM: original heroic fanfare, synthesized (no audio files) ----------
+// Approved direction (v4.9): a space-opera opening feel - bright major-key brass.
+// Title/over: full fanfare + theme on loop. In game: the same theme, quieter,
+// accompaniment-led so it never fights the sound effects.
+const BGM_BEAT = 60 / 112, BGM_BAR = BGM_BEAT * 4;
+const BGM_CH = {
+  Bb: { root: 46, tri: [58, 62, 65] },
+  F:  { root: 41, tri: [57, 60, 65] },
+  Eb: { root: 39, tri: [55, 58, 62] },
+  Gm: { root: 43, tri: [55, 58, 62] },
+};
+const BGM_THEME = ['Bb', 'F', 'Eb', 'F', 'Bb', 'Gm', 'Eb', 'F'];
+const BGM_MELODY = [ // [start beat in the 8-bar theme, length in beats, midi]
+  [0,1,65],[1,3,70],[4,1,69],[5,1,70],[6,1,72],[7,1,74],[8,3,75],[11,1,74],
+  [12,1,72],[13,1,70],[14,2,69],[16,1,65],[17,3,70],[20,1,74],[21,1,75],[22,1,77],
+  [23,1,79],[24,3,77],[27,1,75],[28,2,74],[30,2,72],
+];
+const bgm = { on: false, gain: null, bar: 0, nextT: 0, timer: null };
+const bgmF = m => 440 * Math.pow(2, (m - 69) / 12);
+function bgmBrass(m, t, dur, vol, cutoff){
+  const c = AC; if (!c || !bgm.gain) return;
+  try{
+    const g = c.createGain(), f = c.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = cutoff || 1600;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.045);
+    g.gain.setValueAtTime(vol, t + Math.max(0.05, dur - 0.07));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const det of [-5, 5]){
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.value = bgmF(m); o.detune.value = det;
+      o.connect(f); o.start(t); o.stop(t + dur + 0.02);
+    }
+    f.connect(g); g.connect(bgm.gain);
+  }catch(e){}
+}
+function bgmPad(m, t, dur, vol){
+  const c = AC; if (!c || !bgm.gain) return;
+  try{
+    const g = c.createGain(), f = c.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = 750;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.35);
+    g.gain.setValueAtTime(vol, t + Math.max(0.4, dur - 0.25));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = bgmF(m);
+    o.connect(f); f.connect(g); g.connect(bgm.gain); o.start(t); o.stop(t + dur + 0.02);
+  }catch(e){}
+}
+function bgmTimp(t, vol){
+  const c = AC; if (!c || !bgm.gain) return;
+  try{
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(47, t + 0.22);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    o.connect(g); g.connect(bgm.gain); o.start(t); o.stop(t + 0.45);
+  }catch(e){}
+}
+function bgmSnare(t, vol){
+  const c = AC; if (!c || !bgm.gain) return;
+  try{
+    const n = noiseSrc(c), f = c.createBiquadFilter(), g = c.createGain();
+    f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.9;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+    n.connect(f); f.connect(g); g.connect(bgm.gain); n.start(t); n.stop(t + 0.13);
+  }catch(e){}
+}
+function bgmCrash(t, vol){
+  const c = AC; if (!c || !bgm.gain) return;
+  try{
+    const n = noiseSrc(c), f = c.createBiquadFilter(), g = c.createGain();
+    f.type = 'highpass'; f.frequency.value = 6500;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+    n.connect(f); f.connect(g); g.connect(bgm.gain); n.start(t); n.stop(t + 1.15);
+  }catch(e){}
+}
+function bgmChordBar(name, t, game){
+  const ch = BGM_CH[name];
+  for (const pm of ch.tri) bgmPad(pm + 12, t, BGM_BAR * 0.98, game ? 0.035 : 0.05);
+  if (game){ // driving eighth-note bass, no stabs: it stays under the action
+    for (let e = 0; e < 8; e++){
+      const off = (e === 3 || e === 6) ? 12 : 0;
+      bgmBrass(ch.root + off, t + e * BGM_BEAT / 2, BGM_BEAT * 0.44, e % 2 ? 0.13 : 0.17, 700);
+    }
+  } else {
+    bgmBrass(ch.root, t, BGM_BAR * 0.95, 0.20, 700);
+    bgmBrass(ch.root, t + 2 * BGM_BEAT, BGM_BEAT * 1.6, 0.15, 700);
+    for (const pm of ch.tri) bgmBrass(pm + 12, t, BGM_BEAT * 0.9, 0.10, 1400);
+    for (const pm of ch.tri) bgmBrass(pm + 12, t + 2.5 * BGM_BEAT, BGM_BEAT * 0.7, 0.085, 1400);
+  }
+  bgmTimp(t, game ? 0.26 : 0.42); bgmTimp(t + 2 * BGM_BEAT, game ? 0.22 : 0.37);
+  bgmSnare(t + BGM_BEAT, game ? 0.10 : 0.17); bgmSnare(t + 3 * BGM_BEAT, game ? 0.10 : 0.17);
+  if (!game){ bgmSnare(t + 0.5 * BGM_BEAT, 0.05); bgmSnare(t + 2.5 * BGM_BEAT, 0.05); }
+}
+function bgmIntroBar(idx, t){
+  const ch = BGM_CH.Bb;
+  for (const pm of ch.tri) bgmPad(pm + 12, t, BGM_BAR * 0.98, 0.05);
+  bgmBrass(ch.root, t, BGM_BAR * 0.95, 0.20, 700);
+  const stabs = [[0, 1.4, [70, 74, 77]], [1.5, 0.6, [70, 74, 77]], [2, 0.6, [72, 75, 79]], [3, 0.9, [74, 77, 82]]];
+  for (const [b, d, notes] of stabs) for (const m of notes) bgmBrass(m, t + b * BGM_BEAT, d * BGM_BEAT, 0.15, 1700);
+  bgmSnare(t + BGM_BEAT, 0.16); bgmSnare(t + 3 * BGM_BEAT, 0.16);
+  if (idx === 0){
+    bgmCrash(t, 0.10);
+    for (let i = 0; i < 9; i++) bgmTimp(t + i * 0.09, 0.10 + i * 0.035); // timpani roll-in
+  }
+}
+function bgmScheduleBar(barIdx, t){
+  const inGame = (state === 'playing' || state === 'waveclear');
+  if (inGame){
+    const bi = barIdx % 8;
+    bgmChordBar(BGM_THEME[bi], t, true);
+    for (const [sb, db, mm] of BGM_MELODY) // in game the lead only answers in bars 5-8, softly
+      if (sb >= bi * 4 && sb < bi * 4 + 4 && sb >= 16) bgmBrass(mm, t + (sb - bi * 4) * BGM_BEAT, db * BGM_BEAT * 0.97, 0.11);
+  } else {
+    const pos = barIdx % 10; // 2 intro bars + the 8-bar theme, looping
+    if (pos < 2) bgmIntroBar(pos, t);
+    else {
+      const bi = pos - 2;
+      bgmChordBar(BGM_THEME[bi], t, false);
+      for (const [sb, db, mm] of BGM_MELODY)
+        if (sb >= bi * 4 && sb < bi * 4 + 4) bgmBrass(mm, t + (sb - bi * 4) * BGM_BEAT, db * BGM_BEAT * 0.97, 0.24);
+      if (bi === 0) bgmCrash(t, 0.09);
+    }
+  }
+}
+function startBgm(){
+  if (bgm.on) return;
+  const c = ac(); if (!c) return;
+  try{
+    bgm.gain = c.createGain(); bgm.gain.gain.value = 0.55; bgm.gain.connect(c.destination);
+    bgm.on = true; bgm.bar = 0; bgm.nextT = c.currentTime + 0.06;
+    bgm.timer = setInterval(() => {
+      if (!AC || !bgm.gain) return;
+      bgm.gain.gain.value = muted ? 0 : 0.55;
+      if (state === 'paused'){ bgm.nextT = AC.currentTime + 0.05; return; }
+      while (bgm.nextT < AC.currentTime + 0.18){
+        bgmScheduleBar(bgm.bar, bgm.nextT);
+        bgm.bar++; bgm.nextT += BGM_BAR;
+      }
+    }, 40);
+  }catch(e){}
+}
 
 // ---------- invaders ----------
 // Formation lives in field coords. Anchor (fx, fz) moves sideways and steps closer.
@@ -1531,7 +1676,7 @@ function togglePause(){
 document.getElementById('pauseBtn').addEventListener('click', togglePause);
 document.getElementById('subBtn').addEventListener('click', () => { muted = !muted; document.getElementById('subBtn').textContent = muted ? 'SOUND: OFF (TAP FOR ON)' : 'SOUND ON / OFF'; });
 document.getElementById('bigBtn').addEventListener('click', () => {
-  saberIgnite();
+  saberIgnite(); startBgm();
   const ov = document.getElementById('overlay');
   ov.classList.add('title'); // the crawl returns next time the overlay shows
   document.getElementById('bigBtn').textContent = '▶ START GAME';
